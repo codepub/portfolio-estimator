@@ -1,0 +1,73 @@
+{
+  "capital_gains": {
+    "Finland": {
+      "type": "tiered",
+      "description": "30% up to 30,000 EUR, 34% on the exceeding amount.",
+      "brackets": [
+        { "limit": 30000, "rate": 0.30 },
+        { "limit": null, "rate": 0.34 }
+      ]
+    },
+    "Italy_7_Percent": {
+      "type": "flat",
+      "description": "Flat 7% tax regime for retirees moving to specific southern regions.",
+      "rate": 0.07
+    },
+    "Italy_General": {
+      "type": "flat",
+      "description": "Standard 26% capital gains tax. Wealth tax ignored per requirements.",
+      "rate": 0.26
+    },
+    "Spain": {
+      "type": "tiered",
+      "description": "Progressive savings tax rates (19% to 28%).",
+      "brackets": [
+        { "limit": 6000, "rate": 0.19 },
+        { "limit": 50000, "rate": 0.21 },
+        { "limit": 200000, "rate": 0.23 },
+        { "limit": 300000, "rate": 0.27 },
+        { "limit": null, "rate": 0.28 }
+      ]
+    },
+    "Portugal_General": {
+      "type": "flat",
+      "description": "Standard 28% flat rate on capital gains. Wealth tax ignored.",
+      "rate": 0.28
+    },
+    "Czech_Republic": {
+      "type": "flat",
+      "description": "0% if held for over 3 years.",
+      "rate": 0.00
+    },
+    "Bulgaria": {
+      "type": "flat",
+      "description": "Flat 10% income/capital gains tax.",
+      "rate": 0.10
+    }
+  },
+  "pension_income": {
+    "Finland": {
+      "type": "progressive_estimate",
+      "description": "Estimated progressive tax rate for pension income in Finland.",
+      "brackets": [
+        { "limit": 20000, "rate": 0.08 },
+        { "limit": 30000, "rate": 0.17 },
+        { "limit": 50000, "rate": 0.25 },
+        { "limit": 80000, "rate": 0.33 },
+        { "limit": null, "rate": 0.40 }
+      ]
+    },
+    "Italy_7_Percent": {
+      "type": "flat",
+      "rate": 0.07
+    },
+    "Italy_General": {
+      "type": "tiered",
+      "brackets": [
+        {"limit": 15000, "rate": 0.23},
+        {"limit": 28000, "rate": 0.25},
+        {"limit": null, "rate": 0.35}
+      ]
+    }
+  }
+}

@@ -1,0 +1,285 @@
+import random
+from datetime import datetime
+
+class PortfolioSimulator:
+    def __init__(self, taxes_config, indices_config):
+        self.taxes = taxes_config
+        self.indices = indices_config
+
+    def calculate_pension_tax(self, gross_annual_pension, regime):
+        config = self.taxes.get("pension_income", {}).get(regime)
+        if not config:
+            return 0.0 # Fallback to zero tax if config is missing
+            
+        if config["type"] == "flat":
+            return gross_annual_pension * config["rate"]
+            
+        elif config["type"] in ["tiered", "progressive_estimate"]:
+            tax = 0.0
+            remaining_gross = gross_annual_pension
+            for bracket in config["brackets"]:
+                limit = bracket.get("limit")
+                rate = bracket["rate"]
+                if limit is None or remaining_gross <= limit:
+                    tax += remaining_gross * rate
+                    break
+                else:
+                    tax += limit * rate
+                    remaining_gross -= limit
+            return tax
+        return 0.0
+
+    def _run_single_timeline(self, params, rates, tax_res, start_year, start_month, total_months):
+        results = {}
+        portfolio_value = params['initial_investment']
+        total_principal = portfolio_value * (1 - params['initial_profit_percentage'])
+        current_monthly_spending = params['yearly_spending'] / 12
+        current_pension_values = [p['amount'] for p in params['pensions']]
+        monthly_inflation_rate = (1 + params['inflation_percentage']) ** (1/12) - 1
+        
+        current_buffer = params.get('buffer_current_size', 0.0) if params.get('use_cash_buffer', False) else 0.0
+        monthly_deplete_threshold = (1 + params.get('buffer_depletion_threshold', 0.0))**(1/12) - 1
+        monthly_replenish_threshold = (1 + params.get('buffer_replenishment_threshold', 0.10))**(1/12) - 1
+        current_year_gains_withdrawn = 0
+
+        for month in range(1, total_months + 1):
+            current_absolute_month = (start_year * 12) + start_month - 1 + (month - 1)
+            calendar_month = (current_absolute_month % 12) + 1
+            target_buffer = current_monthly_spending * params.get('buffer_target_months', 36)
+            
+            if calendar_month == 1:
+                current_year_gains_withdrawn = 0
+
+            growth_rate = rates[month - 1]
+            portfolio_value *= (1 + growth_rate)
+
+            for event in params.get('cash_events', []):
+                event_absolute_month = (event['year'] * 12) + event['month'] - 1
+                if current_absolute_month == event_absolute_month:
+                    if event['target'] == 'buffer' and params.get('use_cash_buffer', False):
+                        current_buffer += event['amount']
+                    elif event['target'] == 'investment':
+                        portfolio_value += event['amount']
+                        total_principal += event['amount']
+
+            # --- NEW: LIFESTYLE SPENDING CHANGES ---
+            for event in params.get('spending_events', []):
+                event_abs_month = (event['year'] * 12) + event['month'] - 1
+                if current_absolute_month == event_abs_month:
+                    # Inflate the user's "today's euros" input to match the current timeline's nominal reality
+                    inflated_new_spend = event['amount'] * ((1 + monthly_inflation_rate) ** (month - 1))
+                    current_monthly_spending = inflated_new_spend / 12
+
+            total_net_pension_this_month = 0
+            for i, pension in enumerate(params['pensions']):
+                pension_start_absolute_month = (pension['start_year'] * 12) + pension['start_month'] - 1
+                
+                # Assume active if past the start date
+                is_active = current_absolute_month >= pension_start_absolute_month
+                
+                # Override to false if we have passed a defined end date
+                if pension.get('end_year') and pension.get('end_month'):
+                    pension_end_absolute_month = (pension['end_year'] * 12) + pension['end_month'] - 1
+                    if current_absolute_month > pension_end_absolute_month:
+                        is_active = False
+
+                if is_active:
+                    gross_pension = current_pension_values[i]
+                    # Extract the selected regime, defaulting to Finland
+                    regime = params['pensions'][i].get('tax_regime', 'Finland') 
+                    
+                    annual_tax = self.calculate_pension_tax(gross_pension * 12, regime)
+                    total_net_pension_this_month += gross_pension - (annual_tax / 12)
+
+            effective_monthly_spending = current_monthly_spending
+            is_austerity = False
+            if params.get('enable_low_season_spend', False) and growth_rate < 0:
+                effective_monthly_spending = current_monthly_spending * (1 - params.get('low_season_cut_percentage', 0.10))
+                is_austerity = True
+
+            # --- NEW: AUTONOMOUS SURPLUS REINVESTMENT ---
+            surplus = total_net_pension_this_month - effective_monthly_spending
+            
+            if surplus > 0:
+                # Pension covers everything. No withdrawal needed. Reinvest the extra cash.
+                required_withdrawal_net = 0.0
+                portfolio_value += surplus
+                total_principal += surplus  # Dilutes profit percentage
+            else:
+                # Standard withdrawal scenario
+                required_withdrawal_net = abs(surplus)
+
+            amount_from_buffer = 0.0
+            if params.get('use_cash_buffer', False) and growth_rate < monthly_deplete_threshold:
+                amount_from_buffer = min(required_withdrawal_net, current_buffer)
+                current_buffer -= amount_from_buffer
+                required_withdrawal_net -= amount_from_buffer
+
+            gross_withdrawal = 0.0
+            tax_rate = 0.0
+            profit_percentage = 0.0
+            if required_withdrawal_net > 0 and portfolio_value > 0:
+                profit_percentage = max(0, (portfolio_value - total_principal) / portfolio_value)
+                active_tax_res = tax_res
+                for reloc in params.get('relocations', []):
+                    reloc_abs_month = (reloc['year'] * 12) + reloc['month'] - 1
+                    if current_absolute_month >= reloc_abs_month:
+                        active_tax_res = reloc['new_regime']
+                
+                tax_config = self.taxes["capital_gains"][active_tax_res]
+                if tax_config["type"] == "flat":
+                    tax_rate = tax_config["rate"]
+                elif tax_config["type"] == "tiered":
+                    tax_rate = tax_config["brackets"][-1]["rate"] 
+                    for bracket in tax_config["brackets"]:
+                        if bracket["limit"] is None or current_year_gains_withdrawn < bracket["limit"]:
+                            tax_rate = bracket["rate"]
+                            break
+                
+                gross_withdrawal = required_withdrawal_net / (1 - (profit_percentage * tax_rate))
+                if gross_withdrawal > portfolio_value:
+                    gross_withdrawal = portfolio_value 
+                
+                portfolio_value -= gross_withdrawal
+                principal_withdrawal = gross_withdrawal * (1 - profit_percentage)
+                total_principal -= principal_withdrawal
+                current_year_gains_withdrawn += (gross_withdrawal - principal_withdrawal)
+
+            gross_withdrawal_for_buffer = 0.0
+            if params.get('use_cash_buffer', False) and growth_rate > monthly_replenish_threshold and current_buffer < target_buffer and portfolio_value > 0:
+                gross_excess = portfolio_value * (growth_rate - monthly_replenish_threshold)
+                net_excess = gross_excess * (1 - (profit_percentage * tax_rate))
+                amount_to_add = min(target_buffer - current_buffer, net_excess)
+                
+                if amount_to_add > 0:
+                    gross_withdrawal_for_buffer = amount_to_add / (1 - (profit_percentage * tax_rate))
+                    if gross_withdrawal_for_buffer > portfolio_value:
+                        gross_withdrawal_for_buffer = portfolio_value
+                        amount_to_add = gross_withdrawal_for_buffer * (1 - (profit_percentage * tax_rate))
+                    
+                    portfolio_value -= gross_withdrawal_for_buffer
+                    principal_withdrawal = gross_withdrawal_for_buffer * (1 - profit_percentage)
+                    total_principal -= principal_withdrawal
+                    current_year_gains_withdrawn += (gross_withdrawal_for_buffer - principal_withdrawal)
+                    current_buffer += amount_to_add
+
+            # Ensure principal tracking doesn't drift negative from floating point math
+            total_principal = max(0.0, total_principal)
+
+            current_monthly_spending *= (1 + monthly_inflation_rate)
+            if params['pensions_inflation_adjusted']:
+                current_pension_values = [v * (1 + monthly_inflation_rate) for v in current_pension_values]
+
+            # --- NEW: ACTUAL CONSUMPTION TRACKING ---
+            if surplus > 0:
+                # Target met entirely by pension. Rest was reinvested.
+                actual_spend = effective_monthly_spending
+            else:
+                # Target exceeded pension. Spend is pension + buffer used + net cash pulled from equities.
+                net_investment_withdrawal = gross_withdrawal * (1 - (profit_percentage * tax_rate))
+                actual_spend = total_net_pension_this_month + amount_from_buffer + net_investment_withdrawal
+
+            total_assets = portfolio_value + current_buffer
+            
+            results[month] = {
+                "value": round(total_assets, 2),
+                "buffer_val": round(current_buffer, 2),
+                "w_inv": round(gross_withdrawal + gross_withdrawal_for_buffer, 2),
+                "w_buf": round(amount_from_buffer, 2),
+                "w_pen": round(total_net_pension_this_month, 2),
+                "return": ((1 + growth_rate)**12) - 1,
+                "spend": round(actual_spend, 2),
+                "austerity": is_austerity
+            }
+            
+            # (The "if total_assets <= 0: break" block has been completely removed)
+
+        return results
+
+    def run_simulation(self, params):
+        models_to_run = params.get('growth_models', ['linear'])
+        taxes_to_run = params.get('tax_residencies', ['Finland'])
+        
+        start_year = params.get('simulation_start_year', datetime.now().year)
+        start_month = params.get('simulation_start_month', (datetime.now().month % 12) + 1)
+        end_year = params.get('simulation_end_year', start_year + 50)
+        total_months = (end_year - start_year) * 12
+        
+        merged_results = { month: {"month": month} for month in range(1, total_months + 1) }
+
+        # PRE-CALCULATION FOR STATIC MODELS
+        static_rates = {}
+        for model in [m for m in models_to_run if m != 'stochastic']:
+            rates = []
+            for month in range(1, total_months + 1):
+                cal_year = ((start_year * 12) + start_month - 1 + (month - 1)) // 12
+                if model == 'linear':
+                    rates.append((1 + params['linear_rate'])**(1/12) - 1)
+
+                elif model.startswith('historical_'):
+                    # Strip the first 11 characters ('historical_') to get the exact JSON key
+                    index_key = model[11:] 
+                    
+                    # Look up the key directly in the loaded indices dictionary
+                    history = [row for row in self.indices.get(index_key, []) if params['historical_start_year'] <= row['year'] <= params['historical_end_year']]
+                    if not history:
+                        rates.append(0.0)
+                    else:
+                        rates.append((1 + history[cal_year % len(history)]['return']) ** (1/12) - 1)
+            static_rates[model] = rates
+
+        # EXECUTION PHASE
+        for model in models_to_run:
+            for tax_res in taxes_to_run:
+                if model == 'stochastic':
+                    iterations = params.get('stochastic_iterations', 100)
+                    all_runs = []
+                    
+                    # 1. Run 100 distinct 50-year timelines
+                    for _ in range(iterations):
+                        stoch_rates = []
+                        base_monthly_rate = (1 + params['linear_rate'])**(1/12) - 1
+                        min_mo = (1 + params.get('stochastic_min_annual', -0.50))**(1/12) - 1
+                        max_mo = (1 + params.get('stochastic_max_annual', 0.60))**(1/12) - 1
+                        for _month in range(1, total_months + 1):
+                            raw_rate = random.gauss(base_monthly_rate, params['stochastic_volatility_monthly'])
+                            stoch_rates.append(max(min_mo, min(max_mo, raw_rate)))
+                            
+                        run_result = self._run_single_timeline(params, stoch_rates, tax_res, start_year, start_month, total_months)
+                        all_runs.append(run_result)
+                    
+                    # 2. Sort results month-by-month and extract percentiles
+                    for month in range(1, total_months + 1):
+                        month_data = [run[month] for run in all_runs]
+                        month_data.sort(key=lambda x: x['value']) # Sort by portfolio value
+                        
+                        p10 = month_data[int(iterations * 0.10)]
+                        p50 = month_data[int(iterations * 0.50)]
+                        p90 = month_data[int(iterations * 0.90)]
+                        
+                        for prefix, data in [("stochastic_10", p10), ("stochastic_50", p50), ("stochastic_90", p90)]:
+                            merged_results[month][f"{prefix}_{tax_res}_value"] = data["value"]
+                            merged_results[month][f"{prefix}_{tax_res}_buffer_val"] = data["buffer_val"]
+                            merged_results[month][f"{prefix}_{tax_res}_w_inv"] = data["w_inv"]
+                            merged_results[month][f"{prefix}_{tax_res}_w_buf"] = data["w_buf"]
+                            merged_results[month][f"{prefix}_{tax_res}_w_pen"] = data["w_pen"]
+                            merged_results[month][f"{prefix}_return"] = data["return"]
+                            merged_results[month][f"{prefix}_return"] = data["return"]
+                            merged_results[month][f"{prefix}_spend"] = data.get("spend", 0.0)
+                            merged_results[month][f"{prefix}_austerity"] = data.get("austerity", False)
+                else:
+                    # Execute static models normally
+                    single_run = self._run_single_timeline(params, static_rates[model], tax_res, start_year, start_month, total_months)
+                    for month in range(1, total_months + 1):
+                        data = single_run[month]
+                        merged_results[month][f"{model}_{tax_res}_value"] = data["value"]
+                        merged_results[month][f"{model}_{tax_res}_buffer_val"] = data["buffer_val"]
+                        merged_results[month][f"{model}_{tax_res}_w_inv"] = data["w_inv"]
+                        merged_results[month][f"{model}_{tax_res}_w_buf"] = data["w_buf"]
+                        merged_results[month][f"{model}_{tax_res}_w_pen"] = data["w_pen"]
+                        merged_results[month][f"{model}_return"] = data["return"]
+                        merged_results[month][f"{model}_return"] = data["return"]
+                        merged_results[month][f"{model}_spend"] = data.get("spend", 0.0)
+                        merged_results[month][f"{model}_austerity"] = data.get("austerity", False)
+
+        return list(merged_results.values())
