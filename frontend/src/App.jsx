@@ -507,7 +507,14 @@ export default function App() {
           <div style={{ flex: '0 0 auto', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', overflowY: 'auto', minHeight: '150px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
               <thead style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 1 }}>
-                <tr><th style={{ padding: '12px 16px' }}>Visibility</th><th style={{ padding: '12px 16px' }}>Growth Model</th><th style={{ padding: '12px 16px' }}>Tax Residency</th><th style={{ padding: '12px 16px' }}>Outcome</th><th style={{ padding: '12px 16px', textAlign: 'right' }}>Final Value ({params.simulation_end_year})</th></tr>
+                <tr>
+                  <th style={{ padding: '12px 16px' }}>Visibility</th>
+                  <th style={{ padding: '12px 16px' }}>Growth Model</th>
+                  <th style={{ padding: '12px 16px' }}>Tax Residency</th>
+                  <th style={{ padding: '12px 16px' }}>Outcome</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Final Nominal ({params.simulation_end_year})</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Real Value (Today's €)</th>
+                </tr>
               </thead>
               <tbody>
                 {summaryStats.map((stat, i) => {
@@ -525,7 +532,14 @@ export default function App() {
                             : <span style={{ color: '#991b1b', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Depleted {formatMonthYear((stat.depletionMonth || 1))}</span>
                         }
                       </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: stat.finalValue > 0 ? '600' : '400' }}>{stat.finalValue > 0 ? currencyFormatter.format(stat.finalValue) : '€0'}</td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: stat.finalValue > 0 ? '600' : '400' }}>
+                        {stat.finalValue > 0 ? currencyFormatter.format(stat.finalValue) : '€0'}
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: stat.finalValue > 0 ? '600' : '400', color: '#4b5563', backgroundColor: '#f3f4f6' }}>
+                        {stat.finalValue > 0 
+                          ? currencyFormatter.format(stat.finalValue / Math.pow(1 + params.inflation_percentage, params.simulation_end_year - params.simulation_start_year)) 
+                          : '€0'}
+                      </td>
                     </tr>
                   );
                 })}
