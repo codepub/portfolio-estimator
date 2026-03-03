@@ -1,4 +1,5 @@
 import random
+import math
 from datetime import datetime
 
 class PortfolioSimulator:
@@ -28,6 +29,47 @@ class PortfolioSimulator:
                     remaining_gross -= limit
             return tax
         return 0.0
+
+    def _generate_gbm_returns(self, expected_annual_return, annual_volatility, total_months):
+        """Geometric Brownian Motion: Log-normal random walk."""
+        dt = 1/12
+        mu = expected_annual_return
+        sigma = annual_volatility
+        returns = []
+        
+        for _ in range(total_months):
+            z = random.gauss(0, 1)
+            log_ret = (mu - 0.5 * sigma**2) * dt + sigma * math.sqrt(dt) * z
+            returns.append(math.exp(log_ret) - 1)
+            
+        return returns
+
+    def _generate_heston_returns(self, expected_annual_return, annual_volatility, total_months):
+        """Heston Model: Stochastic volatility with mean-reversion and leverage effects."""
+        dt = 1/12
+        mu = expected_annual_return
+        
+        v_t = annual_volatility**2
+        theta = annual_volatility**2
+        kappa = 2.0
+        xi = 0.4
+        rho = -0.7
+        
+        returns = []
+        
+        for _ in range(total_months):
+            z1 = random.gauss(0, 1)
+            z2 = random.gauss(0, 1)
+            z_s = z1
+            z_v = rho * z1 + math.sqrt(1 - rho**2) * z2
+            
+            v_t_plus = max(v_t, 0.0)
+            log_ret = (mu - 0.5 * v_t_plus) * dt + math.sqrt(v_t_plus * dt) * z_s
+            returns.append(math.exp(log_ret) - 1)
+            
+            v_t = v_t + kappa * (theta - v_t_plus) * dt + xi * math.sqrt(v_t_plus * dt) * z_v
+            
+        return returns
 
     def _run_single_timeline(self, params, rates, tax_res, start_year, start_month, total_months):
         results = {}
@@ -215,7 +257,6 @@ class PortfolioSimulator:
                 cal_year = ((start_year * 12) + start_month - 1 + (month - 1)) // 12
                 if model == 'linear':
                     rates.append((1 + params['linear_rate'])**(1/12) - 1)
-
                 elif model.startswith('historical_'):
                     # Strip the first 11 characters ('historical_') to get the exact JSON key
                     index_key = model[11:] 
@@ -235,16 +276,20 @@ class PortfolioSimulator:
                     iterations = params.get('stochastic_iterations', 100)
                     all_runs = []
                     
-                    # 1. Run 100 distinct 50-year timelines
+                    engine_choice = params.get('stochastic_engine', 'gbm')
+                    annual_rate = params.get('linear_rate', 0.07)
+                    
+                    # Convert the UI's monthly volatility to the annualized metric the math expects
+                    annual_vol = params.get('stochastic_volatility_monthly', 0.04) * math.sqrt(12)
+
+                    # 1. Run distinct 50-year timelines based on the chosen physics engine
                     for _ in range(iterations):
-                        stoch_rates = []
-                        base_monthly_rate = (1 + params['linear_rate'])**(1/12) - 1
-                        min_mo = (1 + params.get('stochastic_min_annual', -0.50))**(1/12) - 1
-                        max_mo = (1 + params.get('stochastic_max_annual', 0.60))**(1/12) - 1
-                        for _month in range(1, total_months + 1):
-                            raw_rate = random.gauss(base_monthly_rate, params['stochastic_volatility_monthly'])
-                            stoch_rates.append(max(min_mo, min(max_mo, raw_rate)))
+                        if engine_choice == 'heston':
+                            stoch_rates = self._generate_heston_returns(annual_rate, annual_vol, total_months)
+                        else:
+                            stoch_rates = self._generate_gbm_returns(annual_rate, annual_vol, total_months)
                             
+                        # No more artificial clamping! The math runs pure.
                         run_result = self._run_single_timeline(params, stoch_rates, tax_res, start_year, start_month, total_months)
                         all_runs.append(run_result)
                     
@@ -268,8 +313,35 @@ class PortfolioSimulator:
                             merged_results[month][f"{prefix}_spend"] = data.get("spend", 0.0)
                             merged_results[month][f"{prefix}_austerity"] = data.get("austerity", False)
                 else:
-                    # Execute static models normally
-                    single_run = self._run_single_timeline(params, static_rates[model], tax_res, start_year, start_month, total_months)
+                    # Execute single-path models (Linear, Historical, GBM, Heston)
+                    rates = []
+                    
+                    if model == 'linear':
+                        base_monthly_rate = (1 + params.get('linear_rate', 0.07))**(1/12) - 1
+                        rates = [base_monthly_rate] * total_months
+                        
+                    elif model.startswith('historical'):
+                        index_name = model.replace('historical_', '')
+                        historical_data = self.indices.get(index_name, [])
+                        # (Assume your existing historical extraction logic goes here to populate 'rates')
+                        rates = self._extract_historical_rates(historical_data, params, total_months) # Keep whatever logic you currently have here
+                        
+                    # --- NEW: QUANTITATIVE PATHS ---
+                    elif model == 'stochastic_gbm':
+                        annual_rate = params.get('linear_rate', 0.07)
+                        annual_vol = params.get('stochastic_volatility_monthly', 0.04) * math.sqrt(12)
+                        rates = self._generate_gbm_returns(annual_rate, annual_vol, total_months)
+                        
+                    elif model == 'stochastic_heston':
+                        annual_rate = params.get('linear_rate', 0.07)
+                        annual_vol = params.get('stochastic_volatility_monthly', 0.04) * math.sqrt(12)
+                        rates = self._generate_heston_returns(annual_rate, annual_vol, total_months)
+                    else:
+                        rates = [0.0] * total_months # Fallback safety
+
+                    # Feed the generated rates into the simulator
+                    single_run = self._run_single_timeline(params, rates, tax_res, start_year, start_month, total_months)
+                    
                     for month in range(1, total_months + 1):
                         data = single_run[month]
                         merged_results[month][f"{model}_{tax_res}_value"] = data["value"]
@@ -277,7 +349,6 @@ class PortfolioSimulator:
                         merged_results[month][f"{model}_{tax_res}_w_inv"] = data["w_inv"]
                         merged_results[month][f"{model}_{tax_res}_w_buf"] = data["w_buf"]
                         merged_results[month][f"{model}_{tax_res}_w_pen"] = data["w_pen"]
-                        merged_results[month][f"{model}_return"] = data["return"]
                         merged_results[month][f"{model}_return"] = data["return"]
                         merged_results[month][f"{model}_spend"] = data.get("spend", 0.0)
                         merged_results[month][f"{model}_austerity"] = data.get("austerity", False)

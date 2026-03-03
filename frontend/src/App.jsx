@@ -21,7 +21,7 @@ export default function App() {
     initial_investment: 1000000, initial_profit_percentage: 0.40, yearly_spending: 40000, inflation_percentage: 0.02,
     enable_low_season_spend: false, low_season_cut_percentage: 0.10,
     growth_models: ['linear'], tax_residencies: ['Finland'], linear_rate: 0.07, 
-    stochastic_volatility_monthly: 0.04, stochastic_min_annual: -0.50, stochastic_max_annual: 0.60, stochastic_iterations: 100,
+    stochastic_volatility_monthly: 0.04, stochastic_iterations: 100, stochastic_engine: 'gbm',
     historical_start_year: 1950, historical_end_year: 2025, 
     simulation_start_year: defaultStartYear, simulation_start_month: defaultStartMonth, simulation_end_year: defaultStartYear + 50,
     pensions_inflation_adjusted: true, pensions: [], cash_events: [], relocations: [], spending_events: [],
@@ -40,9 +40,26 @@ export default function App() {
         const data = await res.json();
         const historyColors = ['#dc2626', '#9333ea', '#ea580c', '#0284c7', '#ca8a04', '#4f46e5'];
         
-        let newUi = { linear: 'Linear Average', stochastic: 'Stochastic (Monte Carlo)' };
-        let newNames = { linear: 'Linear Average', stochastic_90: 'Stochastic (Best 10%)', stochastic_50: 'Stochastic (Median)', stochastic_10: 'Stochastic (Worst 10%)' };
-        let newColors = { linear: '#2563eb', stochastic_90: '#4ade80', stochastic_50: '#16a34a', stochastic_10: '#064e3b' };
+        let newUi = { 
+          linear: 'Linear Average', 
+          stochastic: 'Stochastic (Monte Carlo)',
+          stochastic_gbm: 'GBM (Single Path)',         // NEW
+          stochastic_heston: 'Heston (Crash Scenario)' // NEW
+        };
+        let newNames = { 
+          linear: 'Linear Average', 
+          stochastic_90: 'Stochastic (Best 10%)', 
+          stochastic_50: 'Stochastic (Median)', 
+          stochastic_10: 'Stochastic (Worst 10%)',
+          stochastic_gbm: 'GBM Model',                 // NEW
+          stochastic_heston: 'Heston Crash'            // NEW
+        };
+        let newColors = { 
+          linear: '#2563eb', 
+          stochastic_90: '#4ade80', stochastic_50: '#16a34a', stochastic_10: '#064e3b',
+          stochastic_gbm: '#d97706',                   // NEW: Deep Amber
+          stochastic_heston: '#be123c'                 // NEW: Rose / Crimson
+        };
 
         if (data.historical_indices) {
           data.historical_indices.forEach((indexKey, i) => {
@@ -234,16 +251,18 @@ export default function App() {
             </div>
           )}
 
-          {params.growth_models.some(m => m === 'linear' || m === 'stochastic') && (
-            <div style={{ padding: '12px', backgroundColor: '#f0fdf4', borderRadius: '6px', marginBottom: '16px', border: '1px solid #bbf7d0' }}>
-              <strong style={{ display: 'block', fontSize: '13px', marginBottom: '12px', color: '#166534' }}>Linear & Stochastic Parameters</strong>
-              <div style={inputGroupStyle}><label style={labelStyle}>Expected Annual Return (Decimal)</label><input type="number" name="linear_rate" value={params.linear_rate} onChange={handleChange} step="0.001" style={inputStyle} /></div>
-              {params.growth_models.includes('stochastic') && (
+          {params.growth_models.includes('stochastic') && (
                 <div style={{ borderTop: '1px solid #bbf7d0', paddingTop: '12px', marginTop: '12px' }}>
-                  <div style={inputGroupStyle}><label style={labelStyle}>Monthly Volatility (Decimal)</label><input type="number" name="stochastic_volatility_monthly" value={params.stochastic_volatility_monthly} onChange={handleChange} step="0.01" style={inputStyle} /></div>
-                  <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
-                    <div style={{ flex: 1 }}><label style={labelStyle}>Min Limit</label><input type="number" name="stochastic_min_annual" value={params.stochastic_min_annual} onChange={handleChange} step="0.01" style={inputStyle} /></div>
-                    <div style={{ flex: 1 }}><label style={labelStyle}>Max Limit</label><input type="number" name="stochastic_max_annual" value={params.stochastic_max_annual} onChange={handleChange} step="0.01" style={inputStyle} /></div>
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={labelStyle}>Monte Carlo Engine Physics</label>
+                    <select name="stochastic_engine" value={params.stochastic_engine} onChange={handleChange} style={inputStyle}>
+                      <option value="gbm">Geometric Brownian Motion (Standard)</option>
+                      <option value="heston">Heston Model (Fat Tails & Crashes)</option>
+                    </select>
+                  </div>
+                  <div style={inputGroupStyle}>
+                    <label style={labelStyle}>Monthly Volatility (Decimal, e.g. 0.04)</label>
+                    <input type="number" name="stochastic_volatility_monthly" value={params.stochastic_volatility_monthly} onChange={handleChange} step="0.01" style={inputStyle} />
                   </div>
                   <div>
                     <label style={labelStyle}>Monte Carlo Iterations: {params.stochastic_iterations}</label>
@@ -251,8 +270,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </div>
-          )}
 
           <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px', marginTop: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
