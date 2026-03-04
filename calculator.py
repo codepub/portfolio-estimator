@@ -308,7 +308,7 @@ class PortfolioSimulator:
                     annual_rate = params.get('linear_rate', 0.07)
                     
                     # Convert the UI's monthly volatility to the annualized metric the math expects
-                    annual_vol = params.get('stochastic_volatility_monthly', 0.04) * math.sqrt(12)
+                    annual_vol = params.get('stochastic_volatility', 0.13)
 
                     # 1. Run distinct 50-year timelines based on the chosen physics engine
                     for _ in range(iterations):
@@ -357,12 +357,12 @@ class PortfolioSimulator:
                     # --- NEW: QUANTITATIVE PATHS ---
                     elif model == 'stochastic_gbm':
                         annual_rate = params.get('linear_rate', 0.07)
-                        annual_vol = params.get('stochastic_volatility_monthly', 0.04) * math.sqrt(12)
+                        annual_vol = params.get('stochastic_volatility', 0.13) # <-- Updated
                         rates = self._generate_gbm_returns(annual_rate, annual_vol, total_months)
                         
                     elif model == 'stochastic_heston':
                         annual_rate = params.get('linear_rate', 0.07)
-                        annual_vol = params.get('stochastic_volatility_monthly', 0.04) * math.sqrt(12)
+                        annual_vol = params.get('stochastic_volatility', 0.225) # <-- Updated
                         rates = self._generate_heston_returns(annual_rate, annual_vol, total_months)
                     else:
                         rates = [0.0] * total_months # Fallback safety

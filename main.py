@@ -68,8 +68,8 @@ class SimulationParams(BaseModel):
     spending_events: List[SpendingEventInput] = []
     growth_models: List[str] = ["linear"] # e.g., 'linear', 'stochastic', 'historical_sp500'
     linear_rate: float = 0.07
-    stochastic_volatility_monthly: float = 0.04
     stochastic_engine: str = "gbm"
+    stochastic_volatility: float = 0.13
     stochastic_iterations: int = 100
     simulation_start_year: int = datetime.now().year
     simulation_start_month: int = (datetime.now().month % 12) + 1

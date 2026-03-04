@@ -21,7 +21,7 @@ export default function App() {
     initial_investment: 1000000, initial_profit_percentage: 0.40, yearly_spending: 40000, inflation_percentage: 0.02,
     enable_low_season_spend: false, low_season_cut_percentage: 0.10,
     growth_models: ['linear'], tax_residencies: ['Finland'], linear_rate: 0.07, 
-    stochastic_volatility_monthly: 0.04, stochastic_iterations: 100, stochastic_engine: 'gbm',
+    stochastic_iterations: 100, stochastic_engine: 'gbm', stochastic_volatility: 0.13,
     historical_start_year: 1950, historical_end_year: 2025, 
     simulation_start_year: defaultStartYear, simulation_start_month: defaultStartMonth, simulation_end_year: defaultStartYear + 50,
     pensions_inflation_adjusted: true, pensions: [], cash_events: [], relocations: [], spending_events: [],
@@ -170,6 +170,12 @@ export default function App() {
 
   const toggleLineVisibility = (dataKey) => { setHiddenLines(prev => prev.includes(dataKey) ? prev.filter(k => k !== dataKey) : [...prev, dataKey]); };
   const handleChange = (e) => { const { name, value, type, checked } = e.target; setParams(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : (type === 'number' || type === 'range' ? parseFloat(value) || 0 : value) })); };
+  const handleEngineChange = (e) => {
+    const engine = e.target.value;
+    // Inject the mathematically precise long-term S&P 500 variances
+    const defaultVol = engine === 'heston' ? 0.225 : 0.13;
+    setParams(prev => ({ ...prev, stochastic_engine: engine, stochastic_volatility: defaultVol }));
+  };
   const handleArrayToggle = (key, id) => { setParams(prev => { const isSelected = prev[key].includes(id); const newList = isSelected ? prev[key].filter(i => i !== id) : [...prev[key], id]; return { ...prev, [key]: newList.length ? newList : [id] }; }); };
   
   const addPension = () => { setParams(prev => ({ ...prev, pensions: [...prev.pensions, { amount: 1500, start_year: params.simulation_start_year + 10, start_month: 1, end_year: '', end_month: '', tax_regime: 'Finland' }] })); };
@@ -255,14 +261,14 @@ export default function App() {
                 <div style={{ borderTop: '1px solid #bbf7d0', paddingTop: '12px', marginTop: '12px' }}>
                   <div style={{ marginBottom: '12px' }}>
                     <label style={labelStyle}>Monte Carlo Engine Physics</label>
-                    <select name="stochastic_engine" value={params.stochastic_engine} onChange={handleChange} style={inputStyle}>
+                    <select name="stochastic_engine" value={params.stochastic_engine} onChange={handleEngineChange} style={inputStyle}>
                       <option value="gbm">Geometric Brownian Motion (Standard)</option>
                       <option value="heston">Heston Model (Fat Tails & Crashes)</option>
                     </select>
                   </div>
                   <div style={inputGroupStyle}>
-                    <label style={labelStyle}>Monthly Volatility (Decimal, e.g. 0.04)</label>
-                    <input type="number" name="stochastic_volatility_monthly" value={params.stochastic_volatility_monthly} onChange={handleChange} step="0.01" style={inputStyle} />
+                    <label style={labelStyle}>Annual Volatility (Decimal, e.g. 0.13)</label>
+                    <input type="number" name="stochastic_volatility" value={params.stochastic_volatility} onChange={handleChange} step="0.001" style={inputStyle} />
                   </div>
                   <div>
                     <label style={labelStyle}>Monte Carlo Iterations: {params.stochastic_iterations}</label>
