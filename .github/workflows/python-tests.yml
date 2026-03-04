@@ -1,0 +1,36 @@
+name: Continuous Integration
+
+# Trigger the pipeline every time you push to the main branch
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  test-math-engine:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Pull the code into the cloud container
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # 2. Boot up a clean Python environment
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    # 3. Install the dependencies (FastAPI, Pytest, Pydantic)
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # If you have a requirements.txt, you can uncomment the next line:
+        # pip install -r requirements.txt
+        pip install pytest fastapi uvicorn pydantic
+
+    # 4. Fire the test suite
+    - name: Execute Monte Carlo & Tax Tests
+      run: |
+        pytest test_calculator.py -v
