@@ -151,6 +151,54 @@ class TestPortfolioSimulator(unittest.TestCase):
         self.assertEqual(result[3]["value"], 0.0)
         self.assertEqual(result[3]["spend"], 1600.0)
         self.assertEqual(result[3]["w_inv"], 0.0)
+    
+    def test_historical_model_extraction(self):
+        """Test that historical data is correctly sliced and looped."""
+        params = self.base_params.copy()
+        params["growth_models"] = ["historical_MOCK"]
+        params["historical_start_year"] = 2000
+        params["historical_end_year"] = 2001
+        
+        # Inject mock index data
+        self.simulator.indices = {
+            "MOCK": [
+                {"year": 1999, "return": 0.50},   # Should be filtered out
+                {"year": 2000, "return": 0.1268}, # roughly 1% per month when compounded
+                {"year": 2001, "return": 0.0},    # 0% growth
+                {"year": 2002, "return": -0.50}   # Should be filtered out
+            ]
+        }
+        
+        # Ask the helper for 36 months of data (longer than the 2-year mock slice)
+        rates = self.simulator._extract_historical_rates(self.simulator.indices["MOCK"], params, 36)
+        
+        # 2000 and 2001 gives 24 months of data. 
+        # Total requested is 36, so it must loop back to 2000 for the final 12 months.
+        self.assertEqual(len(rates), 36)
+        
+        # 1.1268^(1/12) - 1 is approx 0.01
+        self.assertAlmostEqual(rates[0], 0.01, places=3)      # Month 1 (Year 2000)
+        self.assertEqual(rates[12], 0.0)                      # Month 13 (Year 2001)
+        self.assertAlmostEqual(rates[24], 0.01, places=3)     # Month 25 (Looped back to Year 2000)
+
+    def test_run_simulation_routing(self):
+        """Test that the main router successfully calls all growth models without throwing AttributeErrors."""
+        params = self.base_params.copy()
+        # Request every single model simultaneously
+        params["growth_models"] = ["linear", "stochastic", "stochastic_gbm", "stochastic_heston", "historical_MOCK"]
+        params["stochastic_iterations"] = 2 # Keep the test fast
+        
+        self.simulator.indices = {"MOCK": [{"year": 2000, "return": 0.10}]}
+        
+        # If any of the internal generator methods are missing, this will crash the test
+        results = self.simulator.run_simulation(params)
+        
+        # Verify the dictionary successfully populated the keys for all requested models
+        self.assertIn("linear_Finland_value", results[1])
+        self.assertIn("stochastic_50_Finland_value", results[1])
+        self.assertIn("stochastic_gbm_Finland_value", results[1])
+        self.assertIn("stochastic_heston_Finland_value", results[1])
+        self.assertIn("historical_MOCK_Finland_value", results[1])
 
 if __name__ == '__main__':
     unittest.main()
