@@ -112,16 +112,70 @@ class PortfolioSimulator:
         monthly_replenish_threshold = (1 + params.get('buffer_replenishment_threshold', 0.10))**(1/12) - 1
         current_year_gains_withdrawn = 0
 
+        # --- SIGNAL PROCESSING STATE ---
+        synthetic_index = 100.0
+        use_trend_guardrail = params.get('use_trend_guardrail', False)
+        use_dynamic_buffer = params.get('use_dynamic_buffer', False)
+        
+        sma_window = int(params.get('trend_sma_months', 12))
+        slow_sma_window = int(params.get('valuation_slow_sma_months', 60))
+        
+        # Ensure the history array is long enough to support the slow SMA if it's active
+        max_window = max(sma_window, slow_sma_window) if use_dynamic_buffer else sma_window
+        index_history = [synthetic_index] * max_window 
+        # ------------------------------------
+
         for month in range(1, total_months + 1):
             current_absolute_month = (start_year * 12) + start_month - 1 + (month - 1)
             calendar_month = (current_absolute_month % 12) + 1
-            target_buffer = current_monthly_spending * params.get('buffer_target_months', 36)
-            
+     
             if calendar_month == 1:
                 current_year_gains_withdrawn = 0
 
             growth_rate = rates[month - 1]
             portfolio_value *= (1 + growth_rate)
+
+     # --- UPDATE SYNTHETIC INDEX & EVALUATE TRENDS ---
+            synthetic_index *= (1 + growth_rate)
+            use_trend_guardrail = params.get('use_trend_guardrail', False)
+            use_dynamic_buffer = params.get('use_dynamic_buffer', False)
+            use_equity_glidepath = params.get('use_equity_glidepath', False)
+            glidepath_months = int(params.get('glidepath_months', 60))
+
+            index_history.append(synthetic_index)
+            
+            if len(index_history) > max_window * 2:
+                index_history = index_history[-max_window:]
+                
+            current_sma = sum(index_history[-sma_window:]) / sma_window
+            
+            # Option 1: Trend Guardrail Evaluation
+            is_macro_downtrend = False
+            if use_trend_guardrail and synthetic_index < current_sma:
+                is_macro_downtrend = True
+
+            # Option 3: Dynamic Buffer Sizing & Buy-the-Dip Protocol
+            # We start with the baseline target
+            target_buffer = current_monthly_spending * params.get('buffer_target_months', 36)
+            
+            if use_dynamic_buffer:
+                current_slow_sma = sum(index_history[-slow_sma_window:]) / slow_sma_window
+                
+                # Valuation ratio: Fast / Slow. Bounded between 0.5x (cheap) and 1.5x (expensive)
+                valuation_ratio = current_sma / current_slow_sma if current_slow_sma > 0 else 1.0
+                buffer_multiplier = max(0.5, min(1.5, valuation_ratio))
+                
+                # Apply the multiplier to dynamically resize the target buffer
+                target_buffer *= buffer_multiplier
+                
+                # Counter-Cyclical Action: If the dynamically shrunk target is now lower than 
+                # our actual cash on hand, we autonomously deploy the excess cash to buy cheap equities.
+                if current_buffer > target_buffer and portfolio_value > 0:
+                    excess_cash = current_buffer - target_buffer
+                    current_buffer -= excess_cash
+                    portfolio_value += excess_cash
+                    total_principal += excess_cash # Dilute profit percentage to reflect higher cost basis
+            # ------------------------------------------------
 
             for event in params.get('cash_events', []):
                 event_absolute_month = (event['year'] * 12) + event['month'] - 1
@@ -179,11 +233,28 @@ class PortfolioSimulator:
                 # Standard withdrawal scenario
                 required_withdrawal_net = abs(surplus)
 
+            # --- UPDATED: Buffer Routing Logic ---
             amount_from_buffer = 0.0
-            if params.get('use_cash_buffer', False) and growth_rate < monthly_deplete_threshold:
-                amount_from_buffer = min(required_withdrawal_net, current_buffer)
+            
+            if params.get('use_cash_buffer', False):
+                is_in_glidepath = use_equity_glidepath and month <= glidepath_months
+                
+                # Option 2: Equity Glidepath (Priority 1)
+                # Deliberately drain the buffer for all expenses during the initial danger zone
+                if is_in_glidepath:
+                    amount_from_buffer = min(required_withdrawal_net, current_buffer)
+                    
+                # Option 1: SMA Trend Guardrail (Priority 2)
+                elif use_trend_guardrail and is_macro_downtrend:
+                    amount_from_buffer = min(required_withdrawal_net, current_buffer)
+                    
+                # Default Fallback: Short-term volatility threshold
+                elif growth_rate < monthly_deplete_threshold:
+                    amount_from_buffer = min(required_withdrawal_net, current_buffer)
+                    
                 current_buffer -= amount_from_buffer
                 required_withdrawal_net -= amount_from_buffer
+            # ------------------------------------------------
 
             gross_withdrawal = 0.0
             tax_rate = 0.0
@@ -216,7 +287,13 @@ class PortfolioSimulator:
                 current_year_gains_withdrawn += (gross_withdrawal - principal_withdrawal)
 
             gross_withdrawal_for_buffer = 0.0
-            if params.get('use_cash_buffer', False) and growth_rate > monthly_replenish_threshold and current_buffer < target_buffer and portfolio_value > 0:
+
+            # --- NEW: Prevent replenishment during the Glidepath phase ---
+            allow_replenish = True
+            if use_equity_glidepath and month <= glidepath_months:
+                allow_replenish = False
+
+            if params.get('use_cash_buffer', False) and allow_replenish and growth_rate > monthly_replenish_threshold and current_buffer < target_buffer and portfolio_value > 0:
                 gross_excess = portfolio_value * (growth_rate - monthly_replenish_threshold)
                 net_excess = gross_excess * (1 - (profit_percentage * tax_rate))
                 amount_to_add = min(target_buffer - current_buffer, net_excess)

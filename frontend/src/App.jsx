@@ -25,7 +25,10 @@ export default function App() {
     historical_start_year: 1950, historical_end_year: 2025, 
     simulation_start_year: defaultStartYear, simulation_start_month: defaultStartMonth, simulation_end_year: defaultStartYear + 50,
     pensions_inflation_adjusted: true, pensions: [], cash_events: [], relocations: [], spending_events: [],
-    use_cash_buffer: false, buffer_target_months: 36, buffer_current_size: 120000, buffer_depletion_threshold: 0.0, buffer_replenishment_threshold: 0.10
+    use_cash_buffer: false, buffer_target_months: 36, buffer_current_size: 120000, buffer_depletion_threshold: 0.0, buffer_replenishment_threshold: 0.10,
+    use_trend_guardrail: false, trend_sma_months: 12,
+    use_equity_glidepath: false, glidepath_months: 60, // <-- NEW
+    use_dynamic_buffer: false, valuation_slow_sma_months: 60 // <-- NEW
   });
 
   const [chartData, setChartData] = useState([]);
@@ -224,16 +227,63 @@ export default function App() {
           </div>
 
           <div style={{ ...inputGroupStyle, backgroundColor: '#fef3c7', padding: '12px', borderRadius: '6px', border: '1px solid #fde68a' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_cash_buffer ? '12px' : '0' }}><input type="checkbox" id="use_cash_buffer" name="use_cash_buffer" checked={params.use_cash_buffer} onChange={handleChange} /><label htmlFor="use_cash_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: '#92400e' }}>Enable Cash Buffer Strategy</label></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_cash_buffer ? '12px' : '0' }}>
+              <input type="checkbox" id="use_cash_buffer" name="use_cash_buffer" checked={params.use_cash_buffer} onChange={handleChange} />
+              <label htmlFor="use_cash_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: '#92400e' }}>Enable Cash Buffer Strategy</label>
+            </div>
+            
             {params.use_cash_buffer && (
-              <>
-                <div style={inputGroupStyle}><label style={labelStyle}>Initial Buffer Size (€)</label><input type="number" name="buffer_current_size" value={params.buffer_current_size} onChange={handleChange} style={inputStyle} /></div>
-                <div style={inputGroupStyle}><label style={labelStyle}>Target Buffer Size (Months)</label><input type="number" name="buffer_target_months" value={params.buffer_target_months} onChange={handleChange} style={inputStyle} /></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div><label style={labelStyle}>Initial Buffer Size (€)</label><input type="number" name="buffer_current_size" value={params.buffer_current_size} onChange={handleChange} style={inputStyle} /></div>
+                <div><label style={labelStyle}>Baseline Target Buffer (Months)</label><input type="number" name="buffer_target_months" value={params.buffer_target_months} onChange={handleChange} style={inputStyle} /></div>
+                
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <div style={{ flex: 1 }}><label style={labelStyle}>Depletion Threshold</label><input type="number" name="buffer_depletion_threshold" value={params.buffer_depletion_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
                   <div style={{ flex: 1 }}><label style={labelStyle}>Replenish Threshold</label><input type="number" name="buffer_replenishment_threshold" value={params.buffer_replenishment_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
                 </div>
-              </>
+
+                {/* --- OPTION 1: SMA TREND GUARDRAIL --- */}
+                <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_trend_guardrail ? '12px' : '0' }}>
+                    <input type="checkbox" id="use_trend_guardrail" name="use_trend_guardrail" checked={params.use_trend_guardrail} onChange={handleChange} />
+                    <label htmlFor="use_trend_guardrail" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>1. Use SMA Trend Guardrail (Circuit Breaker)</label>
+                  </div>
+                  {params.use_trend_guardrail && (
+                    <div>
+                      <label style={labelStyle}>Fast SMA Window (Months, e.g., 12)</label>
+                      <input type="number" name="trend_sma_months" value={params.trend_sma_months} onChange={handleChange} min="1" max="120" style={inputStyle} />
+                    </div>
+                  )}
+                </div>
+
+                {/* --- OPTION 2: EQUITY GLIDEPATH --- */}
+                <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_equity_glidepath ? '12px' : '0' }}>
+                    <input type="checkbox" id="use_equity_glidepath" name="use_equity_glidepath" checked={params.use_equity_glidepath} onChange={handleChange} />
+                    <label htmlFor="use_equity_glidepath" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>2. Use Equity Glidepath (Initial Cash Drain)</label>
+                  </div>
+                  {params.use_equity_glidepath && (
+                    <div>
+                      <label style={labelStyle}>Glidepath Duration (Months, e.g., 60)</label>
+                      <input type="number" name="glidepath_months" value={params.glidepath_months} onChange={handleChange} min="12" max="240" style={inputStyle} />
+                    </div>
+                  )}
+                </div>
+
+                {/* --- OPTION 3: COUNTER-CYCLICAL BUFFER --- */}
+                <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_dynamic_buffer ? '12px' : '0' }}>
+                    <input type="checkbox" id="use_dynamic_buffer" name="use_dynamic_buffer" checked={params.use_dynamic_buffer} onChange={handleChange} />
+                    <label htmlFor="use_dynamic_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>3. Dynamic Counter-Cyclical Sizing (Buy the Dip)</label>
+                  </div>
+                  {params.use_dynamic_buffer && (
+                    <div>
+                      <label style={labelStyle}>Slow SMA Window (Months, e.g., 60)</label>
+                      <input type="number" name="valuation_slow_sma_months" value={params.valuation_slow_sma_months} onChange={handleChange} min="12" max="240" style={inputStyle} />
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 

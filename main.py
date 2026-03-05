@@ -84,6 +84,12 @@ class SimulationParams(BaseModel):
     buffer_current_size: float = 0.0
     buffer_depletion_threshold: float = 0.0
     buffer_replenishment_threshold: float = 0.10
+    use_trend_guardrail: bool = False
+    trend_sma_months: int = 12
+    use_equity_glidepath: bool = False
+    glidepath_months: int = 60
+    use_dynamic_buffer: bool = False
+    valuation_slow_sma_months: int = 60
 
 @app.get("/config")
 def get_config():
