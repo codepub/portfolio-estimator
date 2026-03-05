@@ -181,6 +181,53 @@ class TestPortfolioSimulator(unittest.TestCase):
         self.assertEqual(rates[12], 0.0)                      # Month 13 (Year 2001)
         self.assertAlmostEqual(rates[24], 0.01, places=3)     # Month 25 (Looped back to Year 2000)
 
+    def test_option1_trend_guardrail_execution(self):
+        """Prove that the SMA guardrail successfully intercepts and reroutes withdrawals."""
+        params = self.base_params.copy()
+        params["use_cash_buffer"] = True
+        params["buffer_current_size"] = 50000
+        params["use_trend_guardrail"] = True
+        params["trend_sma_months"] = 3 # Extremely short memory for the test
+        
+        # Month 1-3: Steady 5% growth. Month 4: Massive 30% crash.
+        rates = [0.05, 0.05, 0.05, -0.30] + [0.0] * 596
+        
+        result = self.simulator._run_single_timeline(params, rates, "Finland", 2025, 1, 600)
+        
+        # In Month 3, trend is up. Portfolio should be sold to fund the ~5000 monthly spend.
+        self.assertGreater(result[3]["w_inv"], 0.0)
+        
+        # In Month 4, the -30% crash drops the synthetic index below the 3-month SMA.
+        # The guardrail should trigger: €0 from investments, 100% from buffer.
+        self.assertEqual(result[4]["w_inv"], 0.0)
+        self.assertGreater(result[4]["w_buf"], 0.0)
+
+    def test_option3_counter_cyclical_buy_the_dip(self):
+        """Prove that a collapsing slow/fast SMA ratio forcefully buys equities."""
+        params = self.base_params.copy()
+        params["use_cash_buffer"] = True
+        # Set target to exactly what we have, so under normal conditions, no buying happens
+        params["yearly_spending"] = 12000 # 1k/month
+        params["buffer_target_months"] = 10 
+        params["buffer_current_size"] = 10000 
+        
+        params["use_dynamic_buffer"] = True
+        params["trend_sma_months"] = 2
+        params["valuation_slow_sma_months"] = 4
+        
+        # Force a timeline where the fast average crashes violently below the slow average
+        rates = [0.10, 0.10, 0.10, 0.10, -0.40, -0.40] + [0.0] * 594
+        
+        # Track portfolio value precisely before the crash
+        result = self.simulator._run_single_timeline(params, rates, "Finland", 2025, 1, 600)
+        
+        # By Month 6, the 2-month SMA is heavily negative while the 4-month is still buoyed by early gains.
+        # The ratio collapses < 1.0. Target buffer shrinks. Excess cash MUST be deployed to portfolio.
+        
+        # If the buy-the-dip mechanism fired, the buffer value should be lower than what it started with,
+        # not because we spent it (spend is only 1k), but because we injected it into the market.
+        self.assertLess(result[6]["buffer_val"], 9000)
+
     def test_run_simulation_routing(self):
         """Test that the main router successfully calls all growth models without throwing AttributeErrors."""
         params = self.base_params.copy()
