@@ -202,6 +202,41 @@ class TestPortfolioSimulator(unittest.TestCase):
         self.assertEqual(result[4]["w_inv"], 0.0)
         self.assertGreater(result[4]["w_buf"], 0.0)
 
+    def test_option2_equity_glidepath(self):
+        """Prove that the Equity Glidepath strictly uses the buffer and blocks replenishment during the lock period."""
+        params = self.base_params.copy()
+        params["use_cash_buffer"] = True
+        params["yearly_spending"] = 12000  # 1k / month
+        params["buffer_target_months"] = 10 
+        params["buffer_current_size"] = 10000 
+        
+        params["use_equity_glidepath"] = True
+        params["glidepath_months"] = 2  # Lock the portfolio for exactly 2 months
+        
+        # Month 1: +10% (Massive boom. Normally would trigger a replenish. Glidepath must block it.)
+        # Month 2: -10% (Market crash. Glidepath continues to force buffer usage.)
+        # Month 3: +10% (Massive boom. Glidepath is over. Engine must wake up and replenish the buffer.)
+        rates = [0.10, -0.10, 0.10] + [0.0] * 597
+        
+        result = self.simulator._run_single_timeline(params, rates, "Finland", 2025, 1, 600)
+        
+        # Month 1 (Inside Glidepath, Market Booming):
+        # Must pull expenses strictly from buffer. Must NOT harvest the +10% gain.
+        self.assertEqual(result[1]["w_inv"], 0.0)
+        self.assertGreater(result[1]["w_buf"], 0.0)
+        self.assertLess(result[1]["buffer_val"], 10000) # Buffer drained to pay bills, not refilled
+        
+        # Month 2 (Inside Glidepath, Market Crashing):
+        # Must continue to pull expenses strictly from buffer.
+        self.assertEqual(result[2]["w_inv"], 0.0)
+        self.assertGreater(result[2]["w_buf"], 0.0)
+        self.assertLess(result[2]["buffer_val"], result[1]["buffer_val"]) # Buffer drained further
+        
+        # Month 3 (Outside Glidepath, Market Booming):
+        # The 2-month lock is released. The +10% return now triggers a massive replenish to restore the buffer.
+        self.assertGreater(result[3]["w_inv"], 0.0) # Equities sold to pay expenses and refill buffer
+        self.assertGreater(result[3]["buffer_val"], result[2]["buffer_val"]) # Buffer is successfully refilled
+
     def test_option3_counter_cyclical_buy_the_dip(self):
         """Prove that a collapsing slow/fast SMA ratio forcefully buys equities."""
         params = self.base_params.copy()
@@ -227,6 +262,37 @@ class TestPortfolioSimulator(unittest.TestCase):
         # If the buy-the-dip mechanism fired, the buffer value should be lower than what it started with,
         # not because we spent it (spend is only 1k), but because we injected it into the market.
         self.assertLess(result[6]["buffer_val"], 9000)
+
+    def test_option4_high_water_mark(self):
+        """Prove that the High-Water Mark strategy only replenishes the buffer at all-time highs."""
+        params = self.base_params.copy()
+        params["use_cash_buffer"] = True
+        params["yearly_spending"] = 12000  # 1k / month
+        params["buffer_target_months"] = 10 
+        params["buffer_current_size"] = 10000 
+        params["use_high_water_mark"] = True
+        
+        # Month 1: +5% (Sets a new All-Time High)
+        # Month 2: -10% (Market crash)
+        # Month 3: +2% (Partial recovery, but still below the Month 1 peak)
+        # Month 4: +20% (Massive boom, blasts through to a new All-Time High)
+        rates = [0.05, -0.10, 0.02, 0.20] + [0.0] * 596
+        
+        result = self.simulator._run_single_timeline(params, rates, "Finland", 2025, 1, 600)
+        
+        # Month 2 (Crash): The engine must pull strictly from the buffer. Zero equity sales.
+        self.assertEqual(result[2]["w_inv"], 0.0)
+        self.assertGreater(result[2]["w_buf"], 0.0)
+        self.assertLess(result[2]["buffer_val"], 10000) # Buffer is actively draining
+        
+        # Month 3 (False Recovery): Market is green, but below ATH. Engine must STILL refuse to sell equities.
+        self.assertEqual(result[3]["w_inv"], 0.0)
+        self.assertGreater(result[3]["w_buf"], 0.0)
+        self.assertLess(result[3]["buffer_val"], result[2]["buffer_val"]) # Buffer drains further
+        
+        # Month 4 (New ATH): Market crosses the high-water mark. Engine should finally sell equities to refill the buffer.
+        self.assertGreater(result[4]["w_inv"], 0.0)
+        self.assertAlmostEqual(result[4]["buffer_val"], 10000, delta=1.0) # Buffer is restored to target
 
     def test_run_simulation_routing(self):
         """Test that the main router successfully calls all growth models without throwing AttributeErrors."""

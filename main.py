@@ -90,6 +90,7 @@ class SimulationParams(BaseModel):
     glidepath_months: int = 60
     use_dynamic_buffer: bool = False
     valuation_slow_sma_months: int = 60
+    use_high_water_mark: bool = False
 
 @app.get("/config")
 def get_config():

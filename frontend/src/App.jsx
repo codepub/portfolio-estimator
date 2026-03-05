@@ -27,6 +27,7 @@ export default function App() {
     pensions_inflation_adjusted: true, pensions: [], cash_events: [], relocations: [], spending_events: [],
     use_cash_buffer: false, buffer_target_months: 36, buffer_current_size: 120000, buffer_depletion_threshold: 0.0, buffer_replenishment_threshold: 0.10,
     use_trend_guardrail: false, trend_sma_months: 12,
+    use_high_water_mark: false,
     use_equity_glidepath: false, glidepath_months: 60, // <-- NEW
     use_dynamic_buffer: false, valuation_slow_sma_months: 60 // <-- NEW
   });
@@ -283,6 +284,15 @@ export default function App() {
                     </div>
                   )}
                 </div>
+
+                {/* --- OPTION 4: HIGH-WATER MARK --- */}
+                <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_high_water_mark ? '12px' : '0' }}>
+                    <input type="checkbox" id="use_high_water_mark" name="use_high_water_mark" checked={params.use_high_water_mark} onChange={handleChange} />
+                    <label htmlFor="use_high_water_mark" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>4. Use High-Water Mark (Pure Bucket Strategy)</label>
+                  </div>
+                </div>
+
               </div>
             )}
           </div>

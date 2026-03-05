@@ -120,6 +120,9 @@ class PortfolioSimulator:
         sma_window = int(params.get('trend_sma_months', 12))
         slow_sma_window = int(params.get('valuation_slow_sma_months', 60))
         
+        use_high_water_mark = params.get('use_high_water_mark', False)
+        high_water_mark = portfolio_value
+
         # Ensure the history array is long enough to support the slow SMA if it's active
         max_window = max(sma_window, slow_sma_window) if use_dynamic_buffer else sma_window
         index_history = [synthetic_index] * max_window 
@@ -135,12 +138,16 @@ class PortfolioSimulator:
             growth_rate = rates[month - 1]
             portfolio_value *= (1 + growth_rate)
 
+            if use_high_water_mark and portfolio_value > high_water_mark:
+                high_water_mark = portfolio_value
+
      # --- UPDATE SYNTHETIC INDEX & EVALUATE TRENDS ---
             synthetic_index *= (1 + growth_rate)
             use_trend_guardrail = params.get('use_trend_guardrail', False)
             use_dynamic_buffer = params.get('use_dynamic_buffer', False)
             use_equity_glidepath = params.get('use_equity_glidepath', False)
             glidepath_months = int(params.get('glidepath_months', 60))
+
 
             index_history.append(synthetic_index)
             
@@ -243,7 +250,11 @@ class PortfolioSimulator:
                 # Deliberately drain the buffer for all expenses during the initial danger zone
                 if is_in_glidepath:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
-                    
+
+                # Option 4: High-Water Mark (Always pull from cash first)
+                elif use_high_water_mark:
+                    amount_from_buffer = min(required_withdrawal_net, current_buffer)
+
                 # Option 1: SMA Trend Guardrail (Priority 2)
                 elif use_trend_guardrail and is_macro_downtrend:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
@@ -286,18 +297,30 @@ class PortfolioSimulator:
                 total_principal -= principal_withdrawal
                 current_year_gains_withdrawn += (gross_withdrawal - principal_withdrawal)
 
-            gross_withdrawal_for_buffer = 0.0
 
             # --- NEW: Prevent replenishment during the Glidepath phase ---
+
+            gross_withdrawal_for_buffer = 0.0
             allow_replenish = True
             if use_equity_glidepath and month <= glidepath_months:
                 allow_replenish = False
-
-            if params.get('use_cash_buffer', False) and allow_replenish and growth_rate > monthly_replenish_threshold and current_buffer < target_buffer and portfolio_value > 0:
-                gross_excess = portfolio_value * (growth_rate - monthly_replenish_threshold)
-                net_excess = gross_excess * (1 - (profit_percentage * tax_rate))
-                amount_to_add = min(target_buffer - current_buffer, net_excess)
                 
+            if params.get('use_cash_buffer', False) and allow_replenish and current_buffer < target_buffer and portfolio_value > 0:
+                
+                amount_to_add = 0.0
+                
+                # Option 4: Only refill if the portfolio is sitting at an all-time historical peak
+                if use_high_water_mark:
+                    if portfolio_value >= high_water_mark:
+                        amount_to_add = target_buffer - current_buffer
+                
+                # Standard Logic: Refill if this month's growth beat the threshold
+                elif growth_rate > monthly_replenish_threshold:
+                    gross_excess = portfolio_value * (growth_rate - monthly_replenish_threshold)
+                    net_excess = gross_excess * (1 - (profit_percentage * tax_rate))
+                    amount_to_add = min(target_buffer - current_buffer, net_excess)
+                
+                # Execute the transfer
                 if amount_to_add > 0:
                     gross_withdrawal_for_buffer = amount_to_add / (1 - (profit_percentage * tax_rate))
                     if gross_withdrawal_for_buffer > portfolio_value:
@@ -309,6 +332,10 @@ class PortfolioSimulator:
                     total_principal -= principal_withdrawal
                     current_year_gains_withdrawn += (gross_withdrawal_for_buffer - principal_withdrawal)
                     current_buffer += amount_to_add
+                    
+                    # Reset the peak so we don't continuously harvest a sideways market
+                    if use_high_water_mark:
+                        high_water_mark = portfolio_value
 
             # Ensure principal tracking doesn't drift negative from floating point math
             total_principal = max(0.0, total_principal)
