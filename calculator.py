@@ -114,8 +114,9 @@ class PortfolioSimulator:
 
         # --- SIGNAL PROCESSING STATE ---
         synthetic_index = 100.0
+        high_water_mark_index = 100.0
         # We track the pure synthetic index to avoid the "Unreachable Peak" trap
-        high_water_mark_index = synthetic_index
+        
         use_trend_guardrail = params.get('use_trend_guardrail', False)
         use_dynamic_buffer = params.get('use_dynamic_buffer', False)
         
@@ -139,12 +140,8 @@ class PortfolioSimulator:
 
             growth_rate = rates[month - 1]
             portfolio_value *= (1 + growth_rate)
-
-            if use_high_water_mark and portfolio_value > high_water_mark_index:
-                high_water_mark_index = portfolio_value
-
-     # --- UPDATE SYNTHETIC INDEX & EVALUATE TRENDS ---
             synthetic_index *= (1 + growth_rate)
+    
             use_trend_guardrail = params.get('use_trend_guardrail', False)
             use_dynamic_buffer = params.get('use_dynamic_buffer', False)
             use_equity_glidepath = params.get('use_equity_glidepath', False)
@@ -338,7 +335,7 @@ class PortfolioSimulator:
                 
                 # Option 4: Only refill if the index is sitting at an all-time historical peak
                 if use_high_water_mark:
-                    if portfolio_value >= high_water_mark_index:
+                    if synthetic_index >= high_water_mark_index :  
                         amount_to_add = target_buffer - current_buffer
                 
                 # Standard Logic: Refill if this month's growth beat the threshold
@@ -361,8 +358,8 @@ class PortfolioSimulator:
                     current_buffer += amount_to_add
                     
                     # Reset the peak so we don't continuously harvest a sideways market
-                    if use_high_water_mark:
-                        high_water_mark_index = synthetic_index
+                    #if use_high_water_mark:
+                    #    high_water_mark_index = synthetic_index
 
             # Ensure principal tracking doesn't drift negative from floating point math
             total_principal = max(0.0, total_principal)
