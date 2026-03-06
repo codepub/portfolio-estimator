@@ -30,33 +30,56 @@ class PortfolioSimulator:
             return tax
         return 0.0
 
+
     def _extract_historical_rates(self, historical_data, params, total_months):
-        """Slices historical data by selected years, converts to monthly, and loops to fill the timeline."""
+        """
+        Smart-extracts historical data.
+        1. If monthly data is available for the year, it uses the real monthly return.
+        2. If only annual data is available, it smears the return across 12 months.
+        3. Loops the sequence to fill the required simulation length.
+        """
         start_year = params.get('historical_start_year', 1950)
         end_year = params.get('historical_end_year', 2025)
         
-        # Extract the raw annual returns for the specified timeframe
-        filtered_annual_returns = [d['return'] for d in historical_data if start_year <= d.get('year', 0) <= end_year]
+        # We'll build a flat list of actual monthly rates
+        monthly_sequence = []
         
-        # Fallback to zero growth if the data doesn't exist for those years
-        if not filtered_annual_returns:
+        # Group data by year to handle mixed monthly/yearly inputs
+        from collections import defaultdict
+        data_by_year = defaultdict(list)
+        for d in historical_data:
+            if start_year <= d.get('year', 0) <= end_year:
+                data_by_year[d['year']].append(d)
+
+        # Iterate through years in chronological order
+        for year in sorted(data_by_year.keys()):
+            year_data = data_by_year[year]
+            
+            # Case A: We have monthly data for this year
+            # We check if 'month' exists in any of the entries for this year
+            if any('month' in d for d in year_data):
+                # Sort by month to ensure chronological order (Jan -> Dec)
+                sorted_months = sorted(year_data, key=lambda x: x.get('month', 0))
+                for m_data in sorted_months:
+                    monthly_sequence.append(m_data['return'])
+            
+            # Case B: We only have a single yearly return for this year
+            else:
+                annual_return = year_data[0]['return']
+                # (1 + R_annual)^(1/12) - 1
+                monthly_rate = (1 + annual_return)**(1/12) - 1
+                monthly_sequence.extend([monthly_rate] * 12)
+
+        # Fallback to zero growth if no data was found in that window
+        if not monthly_sequence:
             return [0.0] * total_months
             
-        # Convert the annual returns into a sequence of identical monthly returns
-        monthly_sequence = []
-        for annual_return in filtered_annual_returns:
-            # (1 + R_annual)^(1/12) - 1
-            monthly_rate = (1 + annual_return)**(1/12) - 1
-            monthly_sequence.extend([monthly_rate] * 12)
-            
-        # If the retirement simulation (e.g., 50 years) is longer than the historical slice (e.g., 20 years),
-        # we loop the historical sequence until we have enough months to finish the simulation.
+        # Loop the sequence until we fulfill the total_months (e.g., 600 months)
         rates = []
         while len(rates) < total_months:
             rates.extend(monthly_sequence)
             
-        # Slice it to the exact number of months needed and return
-        return rates[:total_months]    
+        return rates[:total_months]  
 
     def _generate_gbm_returns(self, expected_annual_return, annual_volatility, total_months):
         """Geometric Brownian Motion: Log-normal random walk."""
