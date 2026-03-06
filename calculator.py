@@ -465,9 +465,9 @@ class PortfolioSimulator:
                             merged_results[month][f"{prefix}_{tax_res}_w_buf"] = data["w_buf"]
                             merged_results[month][f"{prefix}_{tax_res}_w_pen"] = data["w_pen"]
                             merged_results[month][f"{prefix}_return"] = data["return"]
-                            merged_results[month][f"{prefix}_return"] = data["return"]
-                            merged_results[month][f"{prefix}_spend"] = data.get("spend", 0.0)
-                            merged_results[month][f"{prefix}_austerity"] = data.get("austerity", False)
+
+                            merged_results[month][f"{prefix}_{tax_res}_spend"] = data.get("spend", 0.0)
+                            merged_results[month][f"{prefix}_{tax_res}_austerity"] = data.get("austerity", False)
                 else:
                     # Execute single-path models (Linear, Historical, GBM, Heston)
                     rates = []
