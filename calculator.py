@@ -114,6 +114,8 @@ class PortfolioSimulator:
 
         # --- SIGNAL PROCESSING STATE ---
         synthetic_index = 100.0
+        # We track the pure synthetic index to avoid the "Unreachable Peak" trap
+        high_water_mark_index = synthetic_index
         use_trend_guardrail = params.get('use_trend_guardrail', False)
         use_dynamic_buffer = params.get('use_dynamic_buffer', False)
         
@@ -121,7 +123,7 @@ class PortfolioSimulator:
         slow_sma_window = int(params.get('valuation_slow_sma_months', 60))
         
         use_high_water_mark = params.get('use_high_water_mark', False)
-        high_water_mark = portfolio_value
+        
 
         # Ensure the history array is long enough to support the slow SMA if it's active
         max_window = max(sma_window, slow_sma_window) if use_dynamic_buffer else sma_window
@@ -138,8 +140,8 @@ class PortfolioSimulator:
             growth_rate = rates[month - 1]
             portfolio_value *= (1 + growth_rate)
 
-            if use_high_water_mark and portfolio_value > high_water_mark:
-                high_water_mark = portfolio_value
+            if use_high_water_mark and portfolio_value > high_water_mark_index:
+                high_water_mark_index = portfolio_value
 
      # --- UPDATE SYNTHETIC INDEX & EVALUATE TRENDS ---
             synthetic_index *= (1 + growth_rate)
@@ -183,6 +185,10 @@ class PortfolioSimulator:
                     portfolio_value += excess_cash
                     total_principal += excess_cash # Dilute profit percentage to reflect higher cost basis
             # ------------------------------------------------
+
+            # Option 4: Track the All-Time High of the Market ---
+            if use_high_water_mark and synthetic_index > high_water_mark_index:
+                high_water_mark_index = synthetic_index
 
             for event in params.get('cash_events', []):
                 event_absolute_month = (event['year'] * 12) + event['month'] - 1
@@ -289,14 +295,35 @@ class PortfolioSimulator:
                             break
                 
                 gross_withdrawal = required_withdrawal_net / (1 - (profit_percentage * tax_rate))
+                
+                # --- EMERGENCY OVERRIDE PART 1: Partial Shortfall ---
                 if gross_withdrawal > portfolio_value:
                     gross_withdrawal = portfolio_value 
+                    actual_net_received = gross_withdrawal * (1 - (profit_percentage * tax_rate))
+                    shortfall = required_withdrawal_net - actual_net_received
+                    
+                    # Portfolio couldn't cover it. Force the shortfall onto the buffer.
+                    if shortfall > 0 and current_buffer > 0:
+                        emergency_pull = min(shortfall, current_buffer)
+                        current_buffer -= emergency_pull
+                        amount_from_buffer += emergency_pull
+                        required_withdrawal_net -= emergency_pull
+                # ----------------------------------------------------
                 
                 portfolio_value -= gross_withdrawal
                 principal_withdrawal = gross_withdrawal * (1 - profit_percentage)
                 total_principal -= principal_withdrawal
                 current_year_gains_withdrawn += (gross_withdrawal - principal_withdrawal)
 
+            # --- EMERGENCY OVERRIDE PART 2: Portfolio Empty ---
+            elif required_withdrawal_net > 0 and portfolio_value <= 0 and current_buffer > 0:
+                # The portfolio is completely empty. We MUST drain the buffer to survive,
+                # ignoring all strategy threshold rules.
+                emergency_pull = min(required_withdrawal_net, current_buffer)
+                current_buffer -= emergency_pull
+                amount_from_buffer += emergency_pull
+                required_withdrawal_net -= emergency_pull
+            # --------------------------------------------------
 
             # --- NEW: Prevent replenishment during the Glidepath phase ---
 
@@ -309,9 +336,9 @@ class PortfolioSimulator:
                 
                 amount_to_add = 0.0
                 
-                # Option 4: Only refill if the portfolio is sitting at an all-time historical peak
+                # Option 4: Only refill if the index is sitting at an all-time historical peak
                 if use_high_water_mark:
-                    if portfolio_value >= high_water_mark:
+                    if portfolio_value >= high_water_mark_index:
                         amount_to_add = target_buffer - current_buffer
                 
                 # Standard Logic: Refill if this month's growth beat the threshold
@@ -335,7 +362,7 @@ class PortfolioSimulator:
                     
                     # Reset the peak so we don't continuously harvest a sideways market
                     if use_high_water_mark:
-                        high_water_mark = portfolio_value
+                        high_water_mark_index = synthetic_index
 
             # Ensure principal tracking doesn't drift negative from floating point math
             total_principal = max(0.0, total_principal)
@@ -482,7 +509,7 @@ class PortfolioSimulator:
                         merged_results[month][f"{model}_{tax_res}_w_buf"] = data["w_buf"]
                         merged_results[month][f"{model}_{tax_res}_w_pen"] = data["w_pen"]
                         merged_results[month][f"{model}_return"] = data["return"]
-                        merged_results[month][f"{model}_spend"] = data.get("spend", 0.0)
-                        merged_results[month][f"{model}_austerity"] = data.get("austerity", False)
+                        merged_results[month][f"{model}_{tax_res}_spend"] = data.get("spend", 0.0)
+                        merged_results[month][f"{model}_{tax_res}_austerity"] = data.get("austerity", False)
 
         return list(merged_results.values())

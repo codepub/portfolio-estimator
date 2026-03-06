@@ -2,6 +2,81 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { PlusCircle, Trash2, Eye, EyeOff } from 'lucide-react';
 
+// A helper function to keep the JSX clean
+const formatEur = (val) => new Intl.NumberFormat('fi-FI', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(val);
+
+const UnifiedTooltip = ({ active, payload, label, params }) => {
+  if (active && payload && payload.length) {
+    const monthData = payload[0].payload; 
+    
+    // Calculate the actual calendar date based on the timeline index
+    const absoluteMonth = parseInt(label);
+    const startYear = parseInt(params.start_year || 2025);
+    const startMonth = parseInt(params.start_month || 1);
+    const currentYear = startYear + Math.floor((absoluteMonth + startMonth - 2) / 12);
+    const calendarMonth = ((absoluteMonth + startMonth - 2) % 12) + 1;
+
+    // Filter to only loop through the main Portfolio Value lines, ignoring the secondary metric lines
+    // so we don't accidentally print duplicate rows for the same model.
+    const mainLines = payload.filter(entry => entry.dataKey.includes('_value'));
+
+    return (
+      <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.96)', padding: '16px', border: '1px solid #cbd5e1', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', maxWidth: '600px' }}>
+        <p style={{ margin: '0 0 12px 0', fontWeight: 'bold', fontSize: '15px', color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+          {currentYear} - Month {calendarMonth} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'normal' }}>(Timeline: {label})</span>
+        </p>
+        
+        {mainLines.map((entry, index) => {
+          const baseKey = entry.dataKey.replace('_value', '');
+          
+          // Extract the unified variables
+          const equitiesSold = monthData[`${baseKey}_w_inv`] !== undefined ? monthData[`${baseKey}_w_inv`] : (monthData.w_inv || 0);
+          const bufferUsed = monthData[`${baseKey}_w_buf`] !== undefined ? monthData[`${baseKey}_w_buf`] : (monthData.w_buf || 0);
+          const pension = monthData[`${baseKey}_w_pen`] !== undefined ? monthData[`${baseKey}_w_pen`] : (monthData.w_pen || 0);
+          const spend = monthData[`${baseKey}_spend`] !== undefined ? monthData[`${baseKey}_spend`] : (monthData.spend || 0);
+          const bufferVal = monthData[`${baseKey}_buffer_val`] !== undefined ? monthData[`${baseKey}_buffer_val`] : (monthData.buffer_val || 0);
+          const isAusterity = monthData[`${baseKey}_austerity`] !== undefined ? monthData[`${baseKey}_austerity`] : (monthData.austerity || false);
+
+          return (
+            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: index === mainLines.length - 1 ? '0' : '16px', borderLeft: `4px solid ${entry.color}`, paddingLeft: '12px' }}>
+              
+              {/* LEFT COLUMN: Identity & Core Assets */}
+              <div style={{ minWidth: '180px' }}>
+                <div style={{ fontWeight: 'bold', color: entry.color, fontSize: '14px', marginBottom: '4px' }}>{entry.name.replace(' Value', '')}</div>
+                <div style={{ fontSize: '14px', color: '#1e293b' }}>Portfolio: <strong>{formatEur(entry.value)}</strong></div>
+                <div style={{ fontSize: '13px', color: '#64748b' }}>Buffer: {formatEur(bufferVal)}</div>
+              </div>
+
+              {/* RIGHT COLUMN: Cashflow Breakdown (CSS Grid for alignment) */}
+              <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px', rowGap: '4px', fontSize: '12px', color: '#475569', borderLeft: '1px dashed #cbd5e1', paddingLeft: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Equities Sold:</span> 
+                  <span style={{ color: equitiesSold > 0 ? '#b91c1c' : 'inherit', fontWeight: equitiesSold > 0 ? 'bold' : 'normal' }}>{formatEur(equitiesSold)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Pension In:</span> 
+                  <span style={{ color: pension > 0 ? '#0284c7' : 'inherit' }}>{formatEur(pension)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Buffer Used:</span> 
+                  <span style={{ color: bufferUsed > 0 ? '#d97706' : 'inherit', fontWeight: bufferUsed > 0 ? 'bold' : 'normal' }}>{formatEur(bufferUsed)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Total Spend:</span> 
+                  <span style={{ fontWeight: 'bold', color: isAusterity ? '#047857' : 'inherit' }}>
+                    {formatEur(spend)} {isAusterity && <span title="Low Season Austerity Active" style={{ fontSize: '12px', marginLeft: '4px' }}>❄️</span>}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function App() {
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();
@@ -31,7 +106,7 @@ export default function App() {
     use_equity_glidepath: false, glidepath_months: 60, // <-- NEW
     use_dynamic_buffer: false, valuation_slow_sma_months: 60 // <-- NEW
   });
-
+  const [isSimulating, setIsSimulating] = useState(false);
   const [chartData, setChartData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -104,7 +179,7 @@ export default function App() {
 
   useEffect(() => {
     const fetchSimulation = async () => {
-      setIsLoading(true); setError(null); setChartData([]); 
+      setIsLoading(true); setError(null); setChartData([]); setIsSimulating(true); 
       try {
         const safePayload = { 
           ...params, 
@@ -115,7 +190,8 @@ export default function App() {
         if (!response.ok) throw new Error('Simulation failed to calculate');
         const json = await response.json();
         setChartData(json.data);
-      } catch (err) { setError(err.message); } finally { setIsLoading(false); }
+      } catch (err) { setError(err.message); } 
+      finally { setIsLoading(false); setIsSimulating(false); }
     };
     const handler = setTimeout(() => fetchSimulation(), 1000);
     return () => clearTimeout(handler);
@@ -171,7 +247,7 @@ export default function App() {
       return (b.depletionMonth || 0) - (a.depletionMonth || 0);
     });
   }, [chartData, activeModels, params.tax_residencies, dynamicModels]);
-
+  
   const toggleLineVisibility = (dataKey) => { setHiddenLines(prev => prev.includes(dataKey) ? prev.filter(k => k !== dataKey) : [...prev, dataKey]); };
   const handleChange = (e) => { const { name, value, type, checked } = e.target; setParams(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : (type === 'number' || type === 'range' ? parseFloat(value) || 0 : value) })); };
   const handleEngineChange = (e) => {
@@ -197,7 +273,7 @@ export default function App() {
   const addSpendingEvent = () => { setParams(prev => ({ ...prev, spending_events: [...prev.spending_events, { amount: 30000, year: params.simulation_start_year + 5, month: 1 }] })); };
   const updateSpendingEvent = (index, field, value) => { setParams(prev => { const newArr = [...prev.spending_events]; newArr[index][field] = parseFloat(value) || 0; return { ...prev, spending_events: newArr }; }); };
   const removeSpendingEvent = (index) => { setParams(prev => ({ ...prev, spending_events: prev.spending_events.filter((_, i) => i !== index) })); };
-
+  
   const inputGroupStyle = { marginBottom: '16px' };
   const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '14px' };
   const inputStyle = { width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' };
@@ -205,7 +281,19 @@ export default function App() {
 
   return (
     <div style={{ backgroundColor: '#f3f4f6', padding: '20px', fontFamily: 'system-ui, sans-serif', width: '100vw', height: '100vh', boxSizing: 'border-box', overflowX: 'hidden', color: '#111827', display: 'flex', flexDirection: 'column' }}>
-      <h1 style={{ fontSize: '1.25rem', borderBottom: '2px solid #ccc', paddingBottom: '10px', marginTop: 0, marginBottom: '16px', color: '#374151' }}>Portfolio Estimator</h1>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h1 style={{ fontSize: '24px', margin: 0, fontWeight: 'bold', color: '#1e293b' }}>Portfolio Estimator</h1>
+          
+          {/* --- Top Right Loading Indicator (No CSS required) --- */}
+          {isSimulating && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0369a1', backgroundColor: '#e0f2fe', padding: '8px 16px', borderRadius: '20px', fontWeight: 'bold', border: '1px solid #bae6fd' }}>
+              ⏳ Simulating Timelines...
+            </div>
+          )}
+        </div>
+        </div>
       
       <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: 0 }}>
         
@@ -238,16 +326,35 @@ export default function App() {
                 <div><label style={labelStyle}>Initial Buffer Size (€)</label><input type="number" name="buffer_current_size" value={params.buffer_current_size} onChange={handleChange} style={inputStyle} /></div>
                 <div><label style={labelStyle}>Baseline Target Buffer (Months)</label><input type="number" name="buffer_target_months" value={params.buffer_target_months} onChange={handleChange} style={inputStyle} /></div>
                 
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <div style={{ flex: 1 }}><label style={labelStyle}>Depletion Threshold</label><input type="number" name="buffer_depletion_threshold" value={params.buffer_depletion_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
-                  <div style={{ flex: 1 }}><label style={labelStyle}>Replenish Threshold</label><input type="number" name="buffer_replenishment_threshold" value={params.buffer_replenishment_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
+<div style={{ ...inputGroupStyle, backgroundColor: '#fef3c7', padding: '12px', borderRadius: '6px', border: '1px solid #fde68a' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_cash_buffer ? '12px' : '0' }}>
+              <input type="checkbox" id="use_cash_buffer" name="use_cash_buffer" checked={params.use_cash_buffer} onChange={handleChange} />
+              <label htmlFor="use_cash_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: '#92400e' }}>Enable Cash Buffer Strategy</label>
+            </div>
+            
+            {params.use_cash_buffer && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div><label style={labelStyle}>Initial Buffer Size (€)</label><input type="number" name="buffer_current_size" value={params.buffer_current_size} onChange={handleChange} style={inputStyle} /></div>
+                <div><label style={labelStyle}>Baseline Target Buffer (Months)</label><input type="number" name="buffer_target_months" value={params.buffer_target_months} onChange={handleChange} style={inputStyle} /></div>
+                
+                {/* --- OPTION 0: BASELINE THRESHOLDS --- */}
+                <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px', paddingBottom: '4px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', marginBottom: '8px', cursor: 'help' }} title="The foundational logic. Used if no other algorithmic options actively override the current month.">
+                    Option 0: Baseline Volatility Thresholds (Fallback) ℹ️
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <div style={{ flex: 1 }}><label style={labelStyle}>Depletion Threshold</label><input type="number" name="buffer_depletion_threshold" value={params.buffer_depletion_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
+                    <div style={{ flex: 1 }}><label style={labelStyle}>Replenish Threshold</label><input type="number" name="buffer_replenishment_threshold" value={params.buffer_replenishment_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
+                  </div>
                 </div>
 
                 {/* --- OPTION 1: SMA TREND GUARDRAIL --- */}
                 <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_trend_guardrail ? '12px' : '0' }}>
                     <input type="checkbox" id="use_trend_guardrail" name="use_trend_guardrail" checked={params.use_trend_guardrail} onChange={handleChange} />
-                    <label htmlFor="use_trend_guardrail" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>1. Use SMA Trend Guardrail (Circuit Breaker)</label>
+                    <label htmlFor="use_trend_guardrail" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'help' }} title="DEFENSIVE: Ignores short-term dips. Only uses buffer if the macro 12-month moving average snaps.">
+                      1. SMA Trend Guardrail (Circuit Breaker) ℹ️
+                    </label>
                   </div>
                   {params.use_trend_guardrail && (
                     <div>
@@ -261,7 +368,9 @@ export default function App() {
                 <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_equity_glidepath ? '12px' : '0' }}>
                     <input type="checkbox" id="use_equity_glidepath" name="use_equity_glidepath" checked={params.use_equity_glidepath} onChange={handleChange} />
-                    <label htmlFor="use_equity_glidepath" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>2. Use Equity Glidepath (Initial Cash Drain)</label>
+                    <label htmlFor="use_equity_glidepath" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'help' }} title="STRUCTURAL: Completely blocks equity sales and replenishment for the first X months, living entirely on cash to beat Sequence of Returns Risk.">
+                      2. Equity Glidepath (Initial Cash Drain) ℹ️
+                    </label>
                   </div>
                   {params.use_equity_glidepath && (
                     <div>
@@ -275,7 +384,9 @@ export default function App() {
                 <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_dynamic_buffer ? '12px' : '0' }}>
                     <input type="checkbox" id="use_dynamic_buffer" name="use_dynamic_buffer" checked={params.use_dynamic_buffer} onChange={handleChange} />
-                    <label htmlFor="use_dynamic_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>3. Dynamic Counter-Cyclical Sizing (Buy the Dip)</label>
+                    <label htmlFor="use_dynamic_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'help' }} title="OFFENSIVE: Compares fast and slow averages. Shrinks the buffer target to force excess cash into the market during a crash.">
+                      3. Dynamic Counter-Cyclical Sizing (Buy the Dip) ℹ️
+                    </label>
                   </div>
                   {params.use_dynamic_buffer && (
                     <div>
@@ -287,11 +398,16 @@ export default function App() {
 
                 {/* --- OPTION 4: HIGH-WATER MARK --- */}
                 <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_high_water_mark ? '12px' : '0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <input type="checkbox" id="use_high_water_mark" name="use_high_water_mark" checked={params.use_high_water_mark} onChange={handleChange} />
-                    <label htmlFor="use_high_water_mark" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>4. Use High-Water Mark (Pure Bucket Strategy)</label>
+                    <label htmlFor="use_high_water_mark" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'help' }} title="STRUCTURAL: Always pays bills from cash first. Strictly refuses to sell equities to refill the buffer unless the portfolio is at an all-time high.">
+                      4. High-Water Mark (Pure Bucket Strategy) ℹ️
+                    </label>
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
 
               </div>
             )}
@@ -470,7 +586,7 @@ export default function App() {
             </div>
           </div>
 
-          <div style={{ flex: '1 1 auto', minHeight: '300px', marginBottom: '20px', backgroundColor: '#fff', padding: '20px 0 0 0', borderRadius: '8px', border: '1px solid #e5e7eb', position: 'relative' }}>
+          <div style={{ flex: '1 1 auto', minHeight: '300px', marginBottom: '20px', backgroundColor: '#fff', padding: '20px 0 0 0', borderRadius: '8px', border: '1px solid #e5e7eb', position: 'relative', zIndex: 10 }}>
             <h4 style={{ position: 'absolute', top: 5, left: 20, margin: 0, fontSize: '13px', color: '#6b7280' }}>Total Portfolio Assets (Left) vs. Return Rate (Right)</h4>
             <ResponsiveContainer width="99%" height="100%">
               <LineChart data={chartData} margin={{ top: 20, right: 20, left: 10, bottom: 20 }} syncId="portfolioSim">
@@ -478,8 +594,7 @@ export default function App() {
                 <XAxis dataKey="month" tickFormatter={formatYear} />
                 <YAxis yAxisId="left" tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`} width={80} />
                 <YAxis yAxisId="right" orientation="right" tickFormatter={(value) => `${(value * 100).toFixed(0)}%`} width={80} />
-                <Tooltip wrapperStyle={{ zIndex: 1000 }} labelFormatter={formatMonthYear} formatter={(value, name) => name.includes('Return') ? [`${(value * 100).toFixed(2)}%`, name] : [currencyFormatter.format(value), name]} />
-                
+                <Tooltip content={<UnifiedTooltip params={params} />} />
                 {params.pensions.map((p, i) => { 
                   const startMonthRelative = ((p.start_year - params.simulation_start_year) * 12) + p.start_month - params.simulation_start_month + 1;
                   const totalSimulationMonths = (params.simulation_end_year - params.simulation_start_year) * 12;
@@ -516,18 +631,7 @@ export default function App() {
                 <YAxis yAxisId="left" tickFormatter={(value) => `${(value / 1000).toFixed(1)}k`} width={80} />
                 <YAxis yAxisId="right" orientation="right" tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`} width={80} />
                 
-                <Tooltip 
-                  wrapperStyle={{ zIndex: 1000 }} 
-                  labelFormatter={formatMonthYear} 
-                  formatter={(value, name, props) => {
-                    if (name.includes('Spend')) {
-                      const modelBase = props.dataKey.replace('_spend', '');
-                      const isAusterity = props.payload[`${modelBase}_austerity`];
-                      return [currencyFormatter.format(value), isAusterity ? `${name} 📉 (Low Season Active)` : name];
-                    }
-                    return [currencyFormatter.format(value), name];
-                  }} 
-                />
+                <Tooltip content={<></>} cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }} />
                 
                 {params.pensions.map((p, i) => { 
                   const startMonthRelative = ((p.start_year - params.simulation_start_year) * 12) + p.start_month - params.simulation_start_month + 1;
