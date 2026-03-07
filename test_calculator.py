@@ -332,34 +332,40 @@ class TestPortfolioSimulator(unittest.TestCase):
         self.assertLess(result[6]["buffer_val"], 9000)
 
     def test_option4_high_water_mark(self):
-        """Prove that the High-Water Mark uses the Synthetic Index to avoid the unreachable peak trap."""
+        """Prove that the High-Water Mark uses the Synthetic Index and respects the Hungry Bucket limit."""
         params = self.base_params.copy()
+        params["initial_investment"] = 100000
+        params["initial_profit_percentage"] = 0.0 # Simplified for clear test math
         params["use_cash_buffer"] = True
         params["yearly_spending"] = 12000  # 1k / month
-        params["buffer_target_months"] = 10 
-        params["buffer_current_size"] = 10000 
+        params["buffer_target_months"] = 10 # 10k target
+        params["buffer_current_size"] = 5000 # START WITH A 5K DEFICIT
         params["use_high_water_mark"] = True
         
-        # M1: +5% (Sets a new All-Time High index of 105)
-        # M2: -10% (Market crash. Index drops to 94.5)
-        # M3: +2% (False recovery. Index at 96.39)
-        # M4: +20% (Massive boom. Index blasts to 115.66. New ATH!)
-        rates = [0.05, -0.10, 0.02, 0.20] + [0.0] * 596
+        # M1: +1%  (New ATH! Growth is ~1k. Deficit is ~6k. MUST ONLY harvest the 1k gain.)
+        # M2: -10% (Market crash. Index drops. Zero equity sales allowed.)
+        # M3: +2%  (False recovery. Still below ATH. Zero equity sales allowed.)
+        # M4: +20% (Massive boom. New ATH! Gains are huge, deficit is small. MUST fully fill buffer.)
+        rates = [0.01, -0.10, 0.02, 0.20] + [0.0] * 596
         
         result = self.simulator._run_single_timeline(params, rates, "Finland", 2025, 1, 600)
+        
+        # Month 1 (Hungry Bucket Test): Buffer starts at 5k, spends 1k (down to 4k). 
+        # The 1% market gain yields 1k. It should harvest that 1k, ending around 5k.
+        # If the bug is active, w_inv will be 6k and the buffer will jump to 10k.
+        self.assertLess(result[1]["w_inv"], 2000, "Failed M1: Engine cannibalized principal to fill the buffer!")
+        self.assertLess(result[1]["buffer_val"], 6000, "Failed M1: Buffer filled past the organic gains available.")
         
         # Month 2 (Crash): The engine must pull strictly from the buffer. Zero equity sales.
         self.assertEqual(result[2]["w_inv"], 0.0, "Failed in M2: Engine sold equities during a crash.")
         self.assertGreater(result[2]["w_buf"], 0.0)
-        self.assertLess(result[2]["buffer_val"], 10000) 
         
-        # Month 3 (False Recovery): Market is green, but index is below 105. Engine MUST refuse to sell.
+        # Month 3 (False Recovery): Market is green, but index is below the M1 peak. Engine MUST refuse to sell.
         self.assertEqual(result[3]["w_inv"], 0.0, "Failed in M3: Engine fell for a false recovery and sold equities.")
-        self.assertLess(result[3]["buffer_val"], result[2]["buffer_val"]) 
         
-        # Month 4 (New ATH): Market crosses the index high-water mark. Engine should sell equities to refill.
+        # Month 4 (New ATH): Market crosses the high-water mark. Huge gains. Buffer fully refills.
         self.assertGreater(result[4]["w_inv"], 0.0, "Failed in M4: Engine refused to sell at a new All-Time High.")
-        self.assertAlmostEqual(result[4]["buffer_val"], 10000, delta=1.0)
+        self.assertAlmostEqual(result[4]["buffer_val"], 10000, delta=1.0, msg="Failed M4: Buffer did not fully refill despite massive gains.")
         
     def test_run_simulation_routing(self):
         """Test that the main router successfully calls all growth models without throwing AttributeErrors."""

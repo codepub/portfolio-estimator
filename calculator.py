@@ -358,9 +358,13 @@ class PortfolioSimulator:
                 
                 # Option 4: Only refill if the index is sitting at an all-time historical peak
                 if use_high_water_mark:
-                    if synthetic_index >= high_water_mark_index :  
-                        amount_to_add = target_buffer - current_buffer
-                
+                    if synthetic_index >= high_water_mark_index:  
+                        # Harvest ONLY the gains generated this month to organically fill the bucket.
+                        # Do not cannibalize the principal to force the buffer to target.
+                        gains_this_month = portfolio_value * growth_rate if growth_rate > 0 else 0.0
+                        net_gains = gains_this_month * (1 - (profit_percentage * tax_rate))
+                        amount_to_add = min(target_buffer - current_buffer, net_gains)
+                        
                 # Standard Logic: Refill if this month's growth beat the threshold
                 elif growth_rate > monthly_replenish_threshold:
                     gross_excess = portfolio_value * (growth_rate - monthly_replenish_threshold)

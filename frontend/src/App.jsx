@@ -25,9 +25,13 @@ const UnifiedTooltip = ({ active, payload, label, params }) => {
         <p style={{ margin: '0 0 12px 0', fontWeight: 'bold', fontSize: '15px', color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
           {currentYear} - Month {calendarMonth} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'normal' }}>(Timeline: {label})</span>
         </p>
-        
-        {mainLines.map((entry, index) => {
+       {mainLines.map((entry, index) => {
           const baseKey = entry.dataKey.replace('_value', '');
+          
+          // --- THE FIX: Find the universal market return key for this specific model ---
+          const returnKey = Object.keys(monthData).find(k => k.endsWith('_return') && baseKey.startsWith(k.replace('_return', '') + '_'));
+          const monthReturn = returnKey ? monthData[returnKey] : 0;
+          // ----------------------------------------------------------------------------
           
           // Extract the unified variables
           const equitiesSold = monthData[`${baseKey}_w_inv`] !== undefined ? monthData[`${baseKey}_w_inv`] : (monthData.w_inv || 0);
@@ -43,12 +47,22 @@ const UnifiedTooltip = ({ active, payload, label, params }) => {
               {/* LEFT COLUMN: Identity & Core Assets */}
               <div style={{ minWidth: '180px' }}>
                 <div style={{ fontWeight: 'bold', color: entry.color, fontSize: '14px', marginBottom: '4px' }}>{entry.name.replace(' Value', '')}</div>
-                <div style={{ fontSize: '14px', color: '#1e293b' }}>Portfolio: <strong>{formatEur(entry.value)}</strong></div>
-                <div style={{ fontSize: '13px', color: '#64748b' }}>Buffer: {formatEur(bufferVal)}</div>
+                <div style={{ fontSize: '14px', color: '#1e293b' }}>Total Assets: <strong>{formatEur(entry.value)}</strong></div>
+                <div style={{ fontSize: '13px', color: '#475569' }}>Equities: {formatEur(entry.value - bufferVal)}</div>
+                <div style={{ fontSize: '13px', color: '#64748b' }}>Cash Buffer: {formatEur(bufferVal)}</div>
               </div>
 
               {/* RIGHT COLUMN: Cashflow Breakdown (CSS Grid for alignment) */}
               <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px', rowGap: '4px', fontSize: '12px', color: '#475569', borderLeft: '1px dashed #cbd5e1', paddingLeft: '24px' }}>
+                
+                {/* --- NEW: Monthly Return Display --- */}
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Month Return:</span> 
+                  <span style={{ color: monthReturn >= 0 ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>
+                    {(monthReturn * 100).toFixed(2)}%
+                  </span>
+                </div>
+                
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Equities Sold:</span> 
                   <span style={{ color: equitiesSold > 0 ? '#b91c1c' : 'inherit', fontWeight: equitiesSold > 0 ? 'bold' : 'normal' }}>{formatEur(equitiesSold)}</span>
@@ -61,7 +75,7 @@ const UnifiedTooltip = ({ active, payload, label, params }) => {
                   <span>Buffer Used:</span> 
                   <span style={{ color: bufferUsed > 0 ? '#d97706' : 'inherit', fontWeight: bufferUsed > 0 ? 'bold' : 'normal' }}>{formatEur(bufferUsed)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gridColumn: '1 / -1', borderTop: '1px solid #f1f5f9', paddingTop: '4px', marginTop: '2px' }}>
                   <span>Total Spend:</span> 
                   <span style={{ fontWeight: 'bold', color: isAusterity ? '#047857' : 'inherit' }}>
                     {formatEur(spend)} {isAusterity && <span title="Low Season Austerity Active" style={{ fontSize: '12px', marginLeft: '4px' }}>❄️</span>}
@@ -70,7 +84,8 @@ const UnifiedTooltip = ({ active, payload, label, params }) => {
               </div>
             </div>
           );
-        })}
+        })}  
+       
       </div>
     );
   }
