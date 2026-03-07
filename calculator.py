@@ -408,7 +408,7 @@ class PortfolioSimulator:
                 "w_inv": round(gross_withdrawal + gross_withdrawal_for_buffer, 2),
                 "w_buf": round(amount_from_buffer, 2),
                 "w_pen": round(total_net_pension_this_month, 2),
-                "return": ((1 + growth_rate)**12) - 1,
+                "return": growth_rate,
                 "spend": round(actual_spend, 2),
                 "austerity": is_austerity
             }
@@ -472,23 +472,24 @@ class PortfolioSimulator:
                         run_result = self._run_single_timeline(params, stoch_rates, tax_res, start_year, start_month, total_months)
                         all_runs.append(run_result)
                     
-                    # 2. Sort results month-by-month and extract percentiles
+                    all_runs.sort(key=lambda run: run[total_months]['value'])
+
+                    # Extract the exact, unbroken mathematical timelines for the percentiles
+                    p10_run = all_runs[int(iterations * 0.10)]
+                    p50_run = all_runs[int(iterations * 0.50)]
+                    p90_run = all_runs[int(iterations * 0.90)]
+
+                    # Now map those pure paths into the merged results
                     for month in range(1, total_months + 1):
-                        month_data = [run[month] for run in all_runs]
-                        month_data.sort(key=lambda x: x['value']) # Sort by portfolio value
-                        
-                        p10 = month_data[int(iterations * 0.10)]
-                        p50 = month_data[int(iterations * 0.50)]
-                        p90 = month_data[int(iterations * 0.90)]
-                        
-                        for prefix, data in [("stochastic_10", p10), ("stochastic_50", p50), ("stochastic_90", p90)]:
+                        for prefix, data in [("stochastic_10", p10_run[month]), 
+                                             ("stochastic_50", p50_run[month]), 
+                                             ("stochastic_90", p90_run[month])]:
                             merged_results[month][f"{prefix}_{tax_res}_value"] = data["value"]
                             merged_results[month][f"{prefix}_{tax_res}_buffer_val"] = data["buffer_val"]
                             merged_results[month][f"{prefix}_{tax_res}_w_inv"] = data["w_inv"]
                             merged_results[month][f"{prefix}_{tax_res}_w_buf"] = data["w_buf"]
                             merged_results[month][f"{prefix}_{tax_res}_w_pen"] = data["w_pen"]
                             merged_results[month][f"{prefix}_return"] = data["return"]
-
                             merged_results[month][f"{prefix}_{tax_res}_spend"] = data.get("spend", 0.0)
                             merged_results[month][f"{prefix}_{tax_res}_austerity"] = data.get("austerity", False)
                 else:

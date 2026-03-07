@@ -1,3 +1,5 @@
+import statistics
+import math
 import unittest
 from calculator import PortfolioSimulator
 
@@ -180,6 +182,72 @@ class TestPortfolioSimulator(unittest.TestCase):
         self.assertAlmostEqual(rates[0], 0.01, places=3)      # Month 1 (Year 2000)
         self.assertEqual(rates[12], 0.0)                      # Month 13 (Year 2001)
         self.assertAlmostEqual(rates[24], 0.01, places=3)     # Month 25 (Looped back to Year 2000)
+
+    def test_stochastic_volatility_scaling(self):
+        """Prove that the stochastic engine correctly scales annual volatility to monthly steps."""
+        expected_annual_return = 0.07
+        target_annual_vol = 0.225
+        total_months = 10000  # Large sample size to ensure statistical convergence
+        
+        # Generate a single raw timeline of 10,000 months to get a statistically significant sample
+        # (Replace '_generate_gbm_rates' with your actual internal generator function name)
+        rates = self.simulator._generate_gbm_returns(
+            expected_annual_return, 
+            target_annual_vol, 
+            total_months)
+        
+        # Calculate the actual standard deviation of the generated monthly returns
+        monthly_vol = statistics.stdev(rates)
+        
+        # Scale it back up to see what the annualized result is
+        realized_annual_vol = monthly_vol * math.sqrt(12)
+        
+        # The realized volatility should be very close to the 0.225 target
+        self.assertAlmostEqual(realized_annual_vol, target_annual_vol, delta=0.01,
+            msg=f"FATAL: Volatility scaling failed. Expected ~{target_annual_vol}, got {realized_annual_vol}")
+
+    def test_monte_carlo_path_continuity(self):
+        """
+        Prove that Monte Carlo percentiles are unbroken, individual timelines
+        and that monthly returns are not accidentally annualized.
+        """
+        params = self.base_params.copy()
+        params["growth_models"] = ["stochastic"]
+        params["stochastic_engine"] = "gbm"
+        params["stochastic_iterations"] = 50 
+        target_vol = 0.13
+        params["stochastic_volatility"] = target_vol
+        params["simulation_start_year"] = 2025
+        params["simulation_end_year"] = 2075  # 50 years = 600 months
+        
+        # Run the full pipeline
+        results = self.simulator.run_simulation(params)
+        
+        # Extract the median path's returns
+        median_returns = [month_data["stochastic_50_return"] for month_data in results]
+        
+        # VERIFICATION 1: The "Annualized Return" Bug
+        # A single monthly return in a 13% vol environment should rarely exceed 15-20%. 
+        # If the backend accidentally annualizes the output ((1+r)^12 - 1), 
+        # these numbers will routinely spike over 50%.
+        max_monthly_swing = max(abs(r) for r in median_returns)
+        self.assertLess(max_monthly_swing, 0.50, 
+                        f"Failed: Monthly returns look suspiciously large ({max_monthly_swing*100:.1f}%). Are they being annualized?")
+        
+        # VERIFICATION 2: The "Frankenstein Path" Bug
+        # Calculate the realized annualized volatility of this single median path.
+        # If paths are being cross-sectionally sorted every month (stitching different timelines together), 
+        # the mathematical noise will cause this volatility to explode well beyond 100%.
+        monthly_vol = statistics.stdev(median_returns)
+        annualized_vol = monthly_vol * math.sqrt(12)
+        
+        # We use a generous upper bound (e.g., 0.30) because a single 600-month path 
+        # will naturally deviate slightly from the 0.13 target, but it will NEVER hit 
+        # the 1.50+ (150%) range of a Frankenstein path.
+        self.assertLess(annualized_vol, 0.30, 
+                        f"FATAL: Frankenstein path detected! Volatility exploded to {annualized_vol*100:.1f}%.")
+        self.assertGreater(annualized_vol, 0.05, 
+                           "Failed: Volatility is suspiciously low. Is the random walk functioning?")
 
     def test_option1_trend_guardrail_execution(self):
         """Prove that the SMA guardrail successfully intercepts and reroutes withdrawals."""

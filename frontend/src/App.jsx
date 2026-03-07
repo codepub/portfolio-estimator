@@ -205,11 +205,24 @@ export default function App() {
     return `${months[(abs % 12 + 12) % 12]} ${params.simulation_start_year + Math.floor(abs / 12)}`;
   };
 
-  const summaryStats = useMemo(() => {
+const summaryStats = useMemo(() => {
     if (!chartData || chartData.length === 0) return [];
     const stats = [];
     
     activeModels.forEach(model => {
+      // 1. Calculate the volatility defensively
+      let annualizedVol = 0;
+      const validReturns = chartData
+        .map(row => parseFloat(row[`${model}_return`]))
+        .filter(r => typeof r === 'number' && !isNaN(r));
+
+      if (validReturns.length > 0) {
+        const mean = validReturns.reduce((sum, val) => sum + val, 0) / validReturns.length;
+        const variance = validReturns.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / validReturns.length;
+        annualizedVol = Math.sqrt(variance) * Math.sqrt(12);
+      }
+
+      // 2. Loop through the tax residencies
       params.tax_residencies.forEach(tax => {
         const dataKey = `${model}_${tax}_value`;
         let finalValue = 0; let depletionMonth = null; let isBridgedByPension = false; 
@@ -237,7 +250,19 @@ export default function App() {
             }
           }
         }
-        stats.push({ id: dataKey, model, tax, modelName: dynamicModels.displayNames[model] || model, taxName: tax.replace(/_/g, ' '), finalValue, depletionMonth, isBridgedByPension });
+        
+        // 3. THE CRITICAL FIX: Explicitly passing annualizedVol into the table object
+        stats.push({ 
+          id: dataKey, 
+          model, 
+          tax, 
+          modelName: dynamicModels.displayNames[model] || model, 
+          taxName: tax.replace(/_/g, ' '), 
+          finalValue, 
+          depletionMonth, 
+          isBridgedByPension, 
+          annualizedVol // <-- This is what was causing the NaN!
+        });
       });
     });
     
@@ -682,6 +707,7 @@ export default function App() {
                   <th style={{ padding: '12px 16px' }}>Growth Model</th>
                   <th style={{ padding: '12px 16px' }}>Tax Residency</th>
                   <th style={{ padding: '12px 16px' }}>Outcome</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right' }}>Volatility (Ann.)</th>
                   <th style={{ padding: '12px 16px', textAlign: 'right' }}>Final Nominal ({params.simulation_end_year})</th>
                   <th style={{ padding: '12px 16px', textAlign: 'right' }}>Real Value (Today's €)</th>
                 </tr>
@@ -701,6 +727,9 @@ export default function App() {
                             ? <span style={{ color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Unsustainable {formatMonthYear((stat.depletionMonth || 1))}</span>
                             : <span style={{ color: '#991b1b', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Depleted {formatMonthYear((stat.depletionMonth || 1))}</span>
                         }
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '500', color: '#4b5563' }}>
+                        {(stat.annualizedVol * 100).toFixed(1)}%
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: stat.finalValue > 0 ? '600' : '400' }}>
                         {stat.finalValue > 0 ? currencyFormatter.format(stat.finalValue) : '€0'}

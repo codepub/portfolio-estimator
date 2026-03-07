@@ -35,7 +35,7 @@ def main():
     indices_map = {
         "SP500": "^GSPC",
         "EUROSTOXX50": "^STOXX50E",
-        "OMXHEL": "^OMXHPI"
+        "OMXHPI": "^OMXHPI"
     }
     
     final_data = {}
