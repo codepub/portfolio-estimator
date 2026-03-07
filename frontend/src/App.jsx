@@ -458,14 +458,45 @@ const summaryStats = useMemo(() => {
             {dynamicModels.capGainsRegimes.map((id) => (<div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}><input type="checkbox" id={`tax-${id}`} checked={params.tax_residencies.includes(id)} onChange={() => handleArrayToggle('tax_residencies', id)} /><label htmlFor={`tax-${id}`} style={{ fontSize: '14px' }}>{id.replace(/_/g, ' ')}</label></div>))}
           </div>
 
-          <div style={{ ...inputGroupStyle, backgroundColor: '#f9fafb', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+<div style={{ ...inputGroupStyle, backgroundColor: '#f9fafb', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
             <label style={labelStyle}>Compare Growth Models</label>
             {Object.entries(dynamicModels.uiModels).map(([id, name]) => (<div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}><input type="checkbox" id={id} checked={params.growth_models.includes(id)} onChange={() => handleArrayToggle('growth_models', id)} /><label htmlFor={id} style={{ fontSize: '14px' }}>{name}</label></div>))}
+            
+            {/* --- NEW: Linear Rate Input --- */}
+            {params.growth_models.includes('linear') && (
+              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #d1d5db' }}>
+                <label style={labelStyle}>Linear Return Rate (Decimal, e.g. 0.07)</label>
+                <input type="number" name="linear_rate" value={params.linear_rate} onChange={handleChange} step="0.001" style={inputStyle} />
+              </div>
+            )}
           </div>
 
+          {/* --- UPDATED: Historical Eras with Presets --- */}
           {params.growth_models.some(m => m.startsWith('historical')) && (
             <div style={{ padding: '12px', backgroundColor: '#eef2ff', borderRadius: '6px', marginBottom: '16px', border: '1px solid #c7d2fe' }}>
-              <strong style={{ display: 'block', fontSize: '13px', marginBottom: '12px', color: '#3730a3' }}>Historical Parameters</strong>
+              <strong style={{ display: 'block', fontSize: '13px', marginBottom: '12px', color: '#3730a3' }}>Historical Stress Tests</strong>
+              
+              <div style={{ marginBottom: '12px' }}>
+                <select 
+                  style={inputStyle} 
+                  onChange={(e) => {
+                    const [start, end] = e.target.value.split(',').map(Number);
+                    // Only update if it's not the "custom" option
+                    if (!isNaN(start) && !isNaN(end)) {
+                      setParams(prev => ({...prev, historical_start_year: start, historical_end_year: end}));
+                    }
+                  }}
+                  value={`${params.historical_start_year},${params.historical_end_year}`}
+                >
+                  <option value="1950,2025">Full History (1950 - Present)</option>
+                  <option value="1968,1982">The Great Stagflation (1968 - 1982)</option>
+                  <option value="1999,2010">Dot-Com & GFC Crashes (1999 - 2010)</option>
+                  <option value="2009,2021">The Bull Run (2009 - 2021)</option>
+                  <option value="1929,1945">Great Depression (1929 - 1945)</option>
+                  <option value="custom">Custom Range...</option>
+                </select>
+              </div>
+
               <div style={{ display: 'flex', gap: '10px' }}>
                 <div style={{ flex: 1 }}><label style={labelStyle}>Start Year</label><input type="number" name="historical_start_year" value={params.historical_start_year} onChange={handleChange} style={inputStyle} /></div>
                 <div style={{ flex: 1 }}><label style={labelStyle}>End Year</label><input type="number" name="historical_end_year" value={params.historical_end_year} onChange={handleChange} style={inputStyle} /></div>
@@ -657,7 +688,12 @@ const summaryStats = useMemo(() => {
                 })}
 
                 {activeModels.map(model => params.tax_residencies.map(tax => <Line yAxisId="left" key={`${model}_${tax}`} type="monotone" dataKey={`${model}_${tax}_value`} name={`${dynamicModels.displayNames[model] || model} (${tax.replace(/_/g, ' ')})`} stroke={dynamicModels.displayColors[model] || '#000'} strokeDasharray={dynamicModels.taxStyles[tax]} strokeWidth={2} dot={false} isAnimationActive={false} hide={hiddenLines.includes(`${model}_${tax}_value`)} />))}
-                {activeModels.map(model => <Line yAxisId="right" key={`${model}_return`} type="monotone" dataKey={`${model}_return`} name={`${dynamicModels.displayNames[model] || model} Return`} stroke={dynamicModels.displayColors[model] || '#000'} strokeDasharray="2 4" strokeWidth={1} dot={false} isAnimationActive={false} hide={hiddenLines.includes(`${model}_return`)} />)}
+                
+                {/* --- UPDATED: Hide the return line if all related tax variations are hidden --- */}
+                {activeModels.map(model => {
+                  const isModelHidden = params.tax_residencies.every(tax => hiddenLines.includes(`${model}_${tax}_value`));
+                  return <Line yAxisId="right" key={`${model}_return`} type="monotone" dataKey={`${model}_return`} name={`${dynamicModels.displayNames[model] || model} Return`} stroke={dynamicModels.displayColors[model] || '#000'} strokeDasharray="2 4" strokeWidth={1} dot={false} isAnimationActive={false} hide={isModelHidden} />;
+                })}
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -731,7 +767,7 @@ const summaryStats = useMemo(() => {
                 {summaryStats.map((stat, i) => {
                   const isHidden = hiddenLines.includes(stat.id);
                   return (
-                    <tr key={stat.id} onClick={() => { toggleLineVisibility(stat.id); toggleLineVisibility(stat.id.replace('_value', '_return')); }} style={{ borderBottom: '1px solid #e5e7eb', cursor: 'pointer', backgroundColor: i % 2 === 0 ? '#fff' : '#f9fafb', opacity: isHidden ? 0.4 : 1 }}>
+                    <tr key={stat.id} onClick={() => toggleLineVisibility(stat.id)} style={{ borderBottom: '1px solid #e5e7eb', cursor: 'pointer', backgroundColor: i % 2 === 0 ? '#fff' : '#f9fafb', opacity: isHidden ? 0.4 : 1 }}>
                       <td style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>{isHidden ? <EyeOff size={16} /> : <Eye size={16} color={dynamicModels.displayColors[stat.model] || '#000'} />}<span>{isHidden ? 'Hidden' : 'Visible'}</span></td>
                       <td style={{ padding: '12px 16px', fontWeight: '500' }}><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><div style={{ width: '10px', height: '10px', backgroundColor: dynamicModels.displayColors[stat.model] || '#000', borderRadius: '2px' }}></div>{stat.modelName}</div></td>
                       <td style={{ padding: '12px 16px' }}><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke="#4b5563" strokeWidth="2" strokeDasharray={dynamicModels.taxStyles[stat.tax]} /></svg>{stat.taxName}</div></td>

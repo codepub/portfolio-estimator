@@ -21,7 +21,7 @@ app.add_middleware(
 try:
     with open("taxes.json", "r") as f:
         taxes_config = json.load(f)
-    with open("indices.json", "r") as f:
+    with open("indices_monthly.json", "r") as f:
         indices_config = json.load(f)
 except FileNotFoundError:
     taxes_config = {}
