@@ -295,39 +295,53 @@ class PortfolioSimulator:
             if params.get('use_cash_buffer', False):
                 is_in_glidepath = use_equity_glidepath and month <= glidepath_months
                 
+                # --- NEW: Global Seed Corn Protector (Withdrawal Override) ---
+                is_critically_low_equities = False
+                total_assets_for_check = portfolio_value + current_buffer
+                if total_assets_for_check > 0:
+                    equity_ratio = portfolio_value / total_assets_for_check
+                    replenish_threshold = params.get('equity_replenish_threshold', 0.50)
+                    # If equities fall below 50% of net worth, trigger the survival floor
+                    if equity_ratio < replenish_threshold:
+                        is_critically_low_equities = True
+
                 # Option 2: Equity Glidepath (Priority 1)
                 # Deliberately drain the buffer for all expenses during the initial danger zone
                 if is_in_glidepath:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
-
-                # --- NEW: Option 5 - Dual-Momentum Regime Proportional Withdrawal ---
+                # Priority 2: Critical Mass Survival Floor
+                elif is_critically_low_equities:
+                    # Force 100% of living expenses to come from cash to protect remaining shares
+                    amount_from_buffer = min(required_withdrawal_net, current_buffer)
+                # --- UPDATED: Option 5 - 3-Regime Dual-Momentum ---
                 elif params.get('use_proportional_withdrawal', False):
-                    # Sensor checks
+                    
                     price_below_fast = synthetic_index < current_sma
                     price_below_slow = synthetic_index < current_slow_sma
                     
-                    if not price_below_fast and not price_below_slow:
-                        # Regime 1: Expansion. Clear bull market.
-                        buffer_draw_pct = 0.0
-                        
-                    elif price_below_fast and not price_below_slow:
-                        # Regime 2: The Shock (The Penthouse Fall).
-                        # Macro trend is 5-year positive, but the short-term floor just collapsed.
-                        # Do not catch the falling knife. Pivot entirely to cash.
+                    if price_below_fast:
+                        # Regime 1: The Hurricane.
+                        # The short-term trend is broken. The bleeding is active.
+                        # Absolute capital preservation. 100% cash.
                         buffer_draw_pct = 1.0
                         
-                    else:
-                        # Regimes 3 & 4: Secular Bear or Deep Recovery.
-                        # The 5-year macro trend is broken. We use elastic valuation math 
-                        # to share the load between cash and equities.
+                    elif not price_below_fast and price_below_slow:
+                        # Regime 2: Early Recovery (The Valley).
+                        # The bleeding stopped (price > 1yr avg), but we are still fundamentally 
+                        # underwater (price < 5yr avg). Use elastic math to share the load.
                         valuation_ratio = synthetic_index / current_slow_sma if current_slow_sma > 0 else 1.0
                         drawdown = max(0.0, 1.0 - valuation_ratio)
-                        
-                        # Apply multiplier to accelerate cash usage as the crash deepens
                         buffer_draw_pct = min(1.0, drawdown * 2.0)
+                        
+                    else:
+                        # Regime 3: Clear Skies.
+                        # Price is above both the 1-year and 5-year averages.
+                        # 100% equities, preserve the cash buffer.
+                        buffer_draw_pct = 0.0
                         
                     desired_buffer_pull = required_withdrawal_net * buffer_draw_pct
                     amount_from_buffer = min(desired_buffer_pull, current_buffer)
+                # ---------------------------------------------------------
                 # ---------------------------------------------------------
                 # ---------------------------------------------------------
                 # ---------------------------------------------------------
@@ -410,8 +424,19 @@ class PortfolioSimulator:
             if params.get('use_proportional_withdrawal', False):
                 # Never sell equities to refill the cash bucket if we are in a macro drawdown.
                 # Equities must be allowed to recover their intrinsic value first.
-                if synthetic_index < current_slow_sma:
+                if synthetic_index < current_slow_sma or synthetic_index < current_sma:
                     allow_replenish = False   
+            
+            # --- NEW: The Seed Corn Protector (Equity Mass Floor) ---
+            # Never harvest gains to fill cash if the equity engine has lost its critical mass.
+            # Equities must make up at least 20% of the total net worth, otherwise they are strictly protected.
+            total_assets = portfolio_value + current_buffer
+            if total_assets > 0:
+                equity_ratio = portfolio_value / total_assets
+                critical_floor = params.get('equity_critical_mass_floor', 0.20)
+                if equity_ratio < critical_floor:
+                    allow_replenish = False
+
 
             if params.get('use_cash_buffer', False) and allow_replenish and current_buffer < target_buffer and portfolio_value > 0:
                 
@@ -432,6 +457,15 @@ class PortfolioSimulator:
                     net_excess = gross_excess * (1 - (profit_percentage * tax_rate))
                     amount_to_add = min(target_buffer - current_buffer, net_excess)
                 
+                # --- NEW: The Throttle Valve ---
+                # Never harvest more than 3 months of baseline expenses in a single month.
+                # This prevents violent volatility from draining the compounding engine.
+                throttle_multiplier = params.get('buffer_refill_throttle_months', 3)
+                max_safe_refill = current_monthly_spending * throttle_multiplier
+                if amount_to_add > max_safe_refill:
+                    amount_to_add = max_safe_refill
+                # --------------------------------
+
                 # Execute the transfer
                 if amount_to_add > 0:
                     gross_withdrawal_for_buffer = amount_to_add / (1 - (profit_percentage * tax_rate))

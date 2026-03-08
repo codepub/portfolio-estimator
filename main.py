@@ -92,6 +92,9 @@ class SimulationParams(BaseModel):
     valuation_slow_sma_months: int = 60
     use_high_water_mark: bool = False
     use_proportional_withdrawal: bool = False
+    throttle_multiplier: int = 3
+    equity_critical_mass_floor: float = 0.2
+    equity_replenish_threshold: float = 0.5
 
 @app.get("/config")
 def get_config():
