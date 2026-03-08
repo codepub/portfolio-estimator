@@ -342,6 +342,10 @@ class TestPortfolioSimulator(unittest.TestCase):
         params["buffer_target_months"] = 10 # 10k target
         params["buffer_current_size"] = 5000 # START WITH A 5K DEFICIT
         params["use_high_water_mark"] = True
+       # --- NEW: Disable the Refill Throttle for this specific test ---
+        # Allow the engine to transfer up to 12 months of expenses at once 
+        # so it can reach the 10k target in a single massive month.
+        params["buffer_refill_throttle_months"] = 12  
         
         # M1: +1%  (New ATH! Growth is ~1k. Deficit is ~6k. MUST ONLY harvest the 1k gain.)
         # M2: -10% (Market crash. Index drops. Zero equity sales allowed.)
