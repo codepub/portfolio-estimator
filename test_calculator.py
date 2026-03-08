@@ -465,7 +465,67 @@ class TestPortfolioSimulator(unittest.TestCase):
             100.0, 
             "FATAL: Anchor is too strong. It overpowered a constant 50-year bear market."
         )
-
+    
+    def test_option5_superiority_under_heston(self):
+        """
+        Prove that Option 5 (Elastic Dual-Momentum) preserves more capital
+        than Option 1+3 (Binary Guardrail + Dynamic Sizing) during a brutal
+        Heston crash sequence.
+        """
+        import random
+        
+        # Lock the random seed to guarantee both strategies face the EXACT same market sequence
+        random.seed(42)
+        
+        # Generate a vicious 50-year Heston timeline (high volatility, fat tails)
+        annual_rate = 0.07
+        annual_vol = 0.225
+        total_months = 600
+        rates = self.simulator._generate_heston_returns(annual_rate, annual_vol, total_months)
+        
+        # --- STRATEGY A: The Brittle Baseline (Option 1 + 3 + 6) ---
+        params_1_3 = self.base_params.copy()
+        params_1_3.update({
+            "initial_investment": 1000000,
+            "yearly_spending": 40000,
+            "use_cash_buffer": True,
+            "buffer_target_months": 36,
+            "buffer_current_size": 120000,
+            "use_trend_guardrail": True,          # Binary on/off
+            "use_dynamic_buffer": True,           # Aggressive dip buying
+            "use_proportional_withdrawal": False, # Option 5 is OFF
+            "equity_critical_mass_floor": 0.20,
+            "equity_replenish_threshold": 0.50
+        })
+        result_1_3 = self.simulator._run_single_timeline(params_1_3, rates, "Finland", 2025, 1, 600)
+        final_value_1_3 = result_1_3[600]["value"]
+        
+        # --- STRATEGY B: The Elastic Champion (Option 5 + 6) ---
+        params_5 = self.base_params.copy()
+        params_5.update({
+            "initial_investment": 1000000,
+            "yearly_spending": 40000,
+            "use_cash_buffer": True,
+            "buffer_target_months": 36,
+            "buffer_current_size": 120000,
+            "use_trend_guardrail": False,         # Disabled
+            "use_dynamic_buffer": False,          # Disabled
+            "use_proportional_withdrawal": True,  # Option 5 is ON
+            "equity_critical_mass_floor": 0.20,
+            "equity_replenish_threshold": 0.50
+        })
+        result_5 = self.simulator._run_single_timeline(params_5, rates, "Finland", 2025, 1, 600)
+        final_value_5 = result_5[600]["value"]
+        
+        # THE ASSERTION:
+        # Option 5 must mathematically outperform because it husbands the cash buffer 
+        # during the grinding drawdown, whereas 1+3 violently exhausts it.
+        self.assertGreater(
+            final_value_5, 
+            final_value_1_3, 
+            f"Strategy failed! Opt 5 ended with {final_value_5}, but Opt 1+3 ended with {final_value_1_3}"
+        )
+        
     def test_run_simulation_routing(self):
         """Test that the main router successfully calls all growth models without throwing AttributeErrors."""
         params = self.base_params.copy()
