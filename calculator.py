@@ -166,16 +166,19 @@ class PortfolioSimulator:
         
         use_trend_guardrail = params.get('use_trend_guardrail', False)
         use_dynamic_buffer = params.get('use_dynamic_buffer', False)
+        use_proportional_withdrawal = params.get('use_proportional_withdrawal', False)
         
         sma_window = int(params.get('trend_sma_months', 12))
         slow_sma_window = int(params.get('valuation_slow_sma_months', 60))
         
         use_high_water_mark = params.get('use_high_water_mark', False)
         
-
-        # Ensure the history array is long enough to support the slow SMA if it's active
-        max_window = max(sma_window, slow_sma_window) if use_dynamic_buffer else sma_window
-        index_history = [synthetic_index] * max_window 
+        # --- THE FIX: MEMORY ALLOCATION ---
+        # Ensure the history array is long enough to support the slow SMA if ANY 
+        # feature requires it (both Option 3 and Option 5 use the 5-yr average).
+        requires_slow_sma = use_dynamic_buffer or use_proportional_withdrawal
+        max_window = max(sma_window, slow_sma_window) if requires_slow_sma else sma_window
+        index_history = [synthetic_index] * max_window
         # ------------------------------------
 
         for month in range(1, total_months + 1):
@@ -300,9 +303,9 @@ class PortfolioSimulator:
                 total_assets_for_check = portfolio_value + current_buffer
                 if total_assets_for_check > 0:
                     equity_ratio = portfolio_value / total_assets_for_check
-                    replenish_threshold = params.get('equity_replenish_threshold', 0.50)
+                    critical_floor = params.get('equity_critical_mass_floor', 0.20)
                     # If equities fall below 50% of net worth, trigger the survival floor
-                    if equity_ratio < replenish_threshold:
+                    if equity_ratio < critical_floor:
                         is_critically_low_equities = True
 
                 # Option 2: Equity Glidepath (Priority 1)
@@ -433,8 +436,8 @@ class PortfolioSimulator:
             total_assets = portfolio_value + current_buffer
             if total_assets > 0:
                 equity_ratio = portfolio_value / total_assets
-                critical_floor = params.get('equity_critical_mass_floor', 0.20)
-                if equity_ratio < critical_floor:
+                replenish_threshold = params.get('replenish_threshold', 0.50)
+                if equity_ratio < replenish_threshold:
                     allow_replenish = False
 
 

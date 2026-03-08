@@ -466,6 +466,107 @@ class TestPortfolioSimulator(unittest.TestCase):
             "FATAL: Anchor is too strong. It overpowered a constant 50-year bear market."
         )
     
+    def test_option5_dual_momentum_regimes(self):
+        """
+        Prove the 3-Regime Dual-Momentum (Option 5) elastic withdrawal logic:
+        Regime 1 (Hurricane): 100% Cash usage.
+        Regime 2 (Valley): Elastic split between Cash and Equities.
+        Regime 3 (Clear Skies): 100% Equity usage, protect Cash.
+        """
+        params = self.base_params.copy()
+        params.update({
+            "initial_investment": 100000,
+            "yearly_spending": 12000,          # 1k / month
+            "use_cash_buffer": True,
+            "buffer_target_months": 36,
+            "buffer_current_size": 36000,
+            "use_proportional_withdrawal": True, # ENABLE OPTION 5
+            # Disable other overrides for pure testing
+            "use_trend_guardrail": False,
+            "equity_critical_mass_floor": 0.0,   
+            "equity_replenish_threshold": 0.0,
+            "pensions": [],         # <-- Isolates the test from background income
+            "cash_events": [],      # <-- Prevents random timeline spikes
+        })
+
+        # --- ENGINEERED TIMELINE ---
+        # Months 1-60: Flat market. Index = 100. Fast and Slow SMAs stabilize at 100.
+        # Month 61: Sudden -50% crash. Index = 50. (Regime 1: Hurricane)
+        # Months 62-72: Flat at 50. Drags the 12-month Fast SMA down to 50.
+        # Month 73: +10% bounce. Index = 55. (Regime 2: Valley. 55 > Fast SMA(50), but < Slow SMA(~90))
+        # Month 74: +100% boom. Index = 110. (Regime 3: Clear Skies. 110 > Fast and Slow SMAs)
+        rates = [0.0]*60 + [-0.50] + [0.0]*11 + [0.10, 1.00] + [0.0]*100
+        
+        result = self.simulator._run_single_timeline(params, rates, "Finland", 2025, 1, 100)
+
+        # M61: Hurricane (Index plunged below both 1yr and 5yr averages)
+        # Expectation: 100% of the 1,000 withdrawal comes from the buffer. Equities protected.
+        self.assertAlmostEqual(result[61]["w_inv"], 0.0, delta=1.0, msg="Failed Regime 1: Engine sold equities during a hurricane.")
+        self.assertGreater(result[61]["w_buf"], 990, "Failed Regime 1: Buffer did not absorb the full shock.")
+
+        # M73: The Valley (Index bounced above the 1yr average, but still deeply below the 5yr average)
+        # Expectation: The engine elasticizes and splits the 1,000 withdrawal between buffer and equities.
+        w_inv_valley = result[73]["w_inv"]
+        w_buf_valley = result[73]["w_buf"]
+        self.assertGreater(w_inv_valley, 0.0, "Failed Regime 2: Did not utilize equities during early recovery.")
+        self.assertGreater(w_buf_valley, 0.0, "Failed Regime 2: Did not utilize buffer during early recovery.")
+        self.assertAlmostEqual(w_inv_valley + w_buf_valley, 1000.0, delta=20.0, msg="Failed Regime 2: Withdrawal split doesn't sum to target.")
+
+        # M74: Clear Skies (Index skyrockets above both the 1yr and 5yr averages)
+        # Expectation: 100% of the withdrawal comes from equities. Buffer is fully protected.
+        self.assertEqual(result[74]["w_buf"], 0.0, "Failed Regime 3: Engine drained the buffer during a massive bull run.")
+        self.assertGreater(result[74]["w_inv"], 990, "Failed Regime 3: Engine failed to use equities during clear skies.")
+
+    def test_option6_systemic_hysteresis(self):
+        """
+        Prove the Systemic Hysteresis loop (Option 6) correctly isolates the portfolio
+        into the ICU (<20%), Physical Therapy (20%-50%), and Healthy (>50%) states.
+        """
+        params = self.base_params.copy()
+        params.update({
+            "yearly_spending": 12000,
+            "use_cash_buffer": True,
+            "buffer_target_months": 100, # Artificially high target to force replenishment attempts
+            "equity_critical_mass_floor": 0.20,
+            "equity_replenish_threshold": 0.50,
+            "buffer_refill_throttle_months": 12 # Disable throttle for clear testing
+        })
+
+        # Scenario A: The ICU (Equity Mass is critically low)
+        params["initial_investment"] = 10000  # 10k Equity
+        params["buffer_current_size"] = 90000 # 90k Buffer (Total 100k -> 10% Equity)
+        rates_icu = [0.0]*10
+        result_icu = self.simulator._run_single_timeline(params, rates_icu, "Finland", 2025, 1, 10)
+        
+        # Expectation: Because equity is 10% (<20% floor), the engine MUST pull 100% of spending from cash.
+        self.assertEqual(result_icu[1]["w_inv"], 0.0, "Failed ICU: Engine sold equities when critical mass was broken.")
+        self.assertGreater(result_icu[1]["w_buf"], 990, "Failed ICU: Buffer did not absorb the survival withdrawal.")
+
+        # Scenario B: Physical Therapy (Equity is recovering, but still structurally weak)
+        params["initial_investment"] = 30000  # 30k Equity
+        params["buffer_current_size"] = 70000 # 70k Buffer (Total 100k -> 30% Equity)
+        # Market spikes +50% in month 1. Equity hits 45k. Total ~115k. Equity Ratio ~39%.
+        rates_pt = [0.50] + [0.0]*10 
+        result_pt = self.simulator._run_single_timeline(params, rates_pt, "Finland", 2025, 1, 10)
+        
+        # Expectation: 39% is < 50% Replenish Threshold. Even though gains are massive, 
+        # profit harvesting is strictly forbidden. Buffer must NOT increase.
+        buffer_start = 70000
+        buffer_end_m1 = result_pt[1]["buffer_val"]
+        self.assertLessEqual(buffer_end_m1, buffer_start, "Failed Physical Therapy: Engine cannibalized a fragile recovery to refill cash.")
+
+        # Scenario C: Healthy (Equity has regained structural dominance)
+        params["initial_investment"] = 60000  # 60k Equity
+        params["buffer_current_size"] = 40000 # 40k Buffer (Total 100k -> 60% Equity)
+        # Market spikes +50% in month 1. Equity hits 90k. Total ~130k. Equity Ratio ~69%.
+        rates_healthy = [0.50] + [0.0]*10
+        result_healthy = self.simulator._run_single_timeline(params, rates_healthy, "Finland", 2025, 1, 10)
+        
+        # Expectation: 69% > 50% threshold. The engine is fully authorized to harvest the massive profits.
+        buffer_start_healthy = 40000
+        buffer_end_healthy = result_healthy[1]["buffer_val"]
+        self.assertGreater(buffer_end_healthy, buffer_start_healthy, "Failed Healthy State: Engine refused to harvest profits despite high equity mass.")
+
     def test_option5_superiority_under_heston(self):
         """
         Prove that Option 5 (Elastic Dual-Momentum) preserves more capital
@@ -525,7 +626,7 @@ class TestPortfolioSimulator(unittest.TestCase):
             final_value_1_3, 
             f"Strategy failed! Opt 5 ended with {final_value_5}, but Opt 1+3 ended with {final_value_1_3}"
         )
-        
+    
     def test_run_simulation_routing(self):
         """Test that the main router successfully calls all growth models without throwing AttributeErrors."""
         params = self.base_params.copy()
