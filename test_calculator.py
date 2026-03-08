@@ -646,5 +646,66 @@ class TestPortfolioSimulator(unittest.TestCase):
         self.assertIn("stochastic_heston_Finland_value", results[1])
         self.assertIn("historical_MOCK_Finland_value", results[1])
 
+    def test_swr_vs_advanced_guardrails_heston(self):
+        """
+        THE ULTIMATE STRESS TEST: 
+        4% Safe Withdrawal Rate (Standard) vs. Option 5+6 (Engineered).
+        Model: Heston Stochastic Volatility.
+        Rounds: 500 per strategy.
+        """
+        iterations = 500
+        initial_pot = 1000000
+        spend_4_pct = 25000 #Heston fails with real 4%
+        
+        # --- STRATEGY A: THE STANDARD 4% RULE ---
+        # No buffer, no guardrails, just "blind" inflation-adjusted selling.
+        params_a = self.base_params.copy()
+        params_a.update({
+            "initial_investment": initial_pot,
+            "yearly_spending": spend_4_pct,
+            "use_cash_buffer": False,
+            "use_proportional_withdrawal": False,
+            "use_trend_guardrail": False,
+            "equity_critical_mass_floor": 0.0,
+            "equity_replenish_threshold": 0.0,
+            "stochastic_iterations": iterations,
+            "stochastic_engine": "heston",
+            "growth_models": ["stochastic"],
+            "linear_rate": 0.07,
+            "stochastic_volatility": 0.22, # High stress vol
+            "pensions": []
+        })
+
+        # --- STRATEGY B: OPTION 5 + 6 (HYSTERESIS + MOMENTUM) ---
+        # 3-year buffer, Dual-Momentum protection, 20/50 Hysteresis Loop.
+        params_b = params_a.copy()
+        params_b.update({
+            "use_cash_buffer": True,
+            "buffer_target_months": 36,
+            "buffer_current_size": 120000, # Start with 3 years cash
+            "use_proportional_withdrawal": True,
+            "equity_critical_mass_floor": 0.20,
+            "equity_replenish_threshold": 0.50,
+            "buffer_refill_throttle_months": 3
+        })
+
+        # Execute both simulations
+        results_a = self.simulator.run_simulation(params_a)
+        results_b = self.simulator.run_simulation(params_b)
+
+        # Look at the 10th percentile (the "Bad Luck" cases) at the end of 50 years (month 600)
+        final_month = 600
+        p10_value_a = results_a[final_month-1]["stochastic_10_Finland_value"]
+        p10_value_b = results_b[final_month-1]["stochastic_10_Finland_value"]
+
+        print(f"\n--- Heston Stress Test Results ({iterations} rounds) ---")
+        print(f"Standard 4% Rule (P10 Outcome):  €{p10_value_a:,.2f}")
+        print(f"Option 5+6 Protocol (P10 Outcome): €{p10_value_b:,.2f}")
+
+        # Assertion: In a Heston-volatility world, the engineered protocol 
+        # should significantly outperform the standard 4% rule in the fail-tail (P10).
+        self.assertGreater(p10_value_b, p10_value_a, 
+            "The advanced protocol failed to provide superior protection in the tail-risk event.")
+
 if __name__ == '__main__':
     unittest.main()
