@@ -96,15 +96,21 @@ class PortfolioSimulator:
         return returns
 
     def _generate_heston_returns(self, expected_annual_return, annual_volatility, total_months):
-        """Heston Model: Stochastic volatility with mean-reversion and leverage effects."""
+        """Heston Model: Stochastic volatility with valuation-anchored mean-reversion."""
         dt = 1/12
-        mu = expected_annual_return
+        base_mu = expected_annual_return
         
         v_t = annual_volatility**2
         theta = annual_volatility**2
         kappa = 2.0
         xi = 0.4
         rho = -0.7
+        
+        # --- NEW: Intrinsic Valuation Anchor ---
+        # Represents the macroeconomic gravity of the fundamental economy
+        reversion_strength = 0.05  # Determines how aggressively capital buys the dip
+        simulated_index = 100.0
+        trend_index = 100.0
         
         returns = []
         
@@ -115,9 +121,27 @@ class PortfolioSimulator:
             z_v = rho * z1 + math.sqrt(1 - rho**2) * z2
             
             v_t_plus = max(v_t, 0.0)
-            log_ret = (mu - 0.5 * v_t_plus) * dt + math.sqrt(v_t_plus * dt) * z_s
-            returns.append(math.exp(log_ret) - 1)
             
+            # --- THE ANCHOR MATH ---
+            # 1. Grow the theoretical economic baseline
+            trend_index *= math.exp(base_mu * dt)
+            
+            # 2. Calculate the deviation premium
+            # If the market crashes to half its fundamental value, this adds a persistent 
+            # ~3.5% annualized tailwind to the expected return until it recovers.
+            valuation_premium = reversion_strength * math.log(trend_index / simulated_index)
+            
+            # 3. Apply the dynamic drift
+            dynamic_mu = base_mu + valuation_premium
+            
+            log_ret = (dynamic_mu - 0.5 * v_t_plus) * dt + math.sqrt(v_t_plus * dt) * z_s
+            monthly_return = math.exp(log_ret) - 1
+            returns.append(monthly_return)
+            
+            # 4. Update the actual simulated market price
+            simulated_index *= (1 + monthly_return)
+            
+            # The volatility process remains a pure, unanchored Heston spiral
             v_t = v_t + kappa * (theta - v_t_plus) * dt + xi * math.sqrt(v_t_plus * dt) * z_v
             
         return returns
@@ -170,14 +194,14 @@ class PortfolioSimulator:
             use_equity_glidepath = params.get('use_equity_glidepath', False)
             glidepath_months = int(params.get('glidepath_months', 60))
 
-
             index_history.append(synthetic_index)
             
             if len(index_history) > max_window * 2:
                 index_history = index_history[-max_window:]
                 
             current_sma = sum(index_history[-sma_window:]) / sma_window
-            
+            current_slow_sma = sum(index_history[-slow_sma_window:]) / slow_sma_window
+
             # Option 1: Trend Guardrail Evaluation
             is_macro_downtrend = False
             if use_trend_guardrail and synthetic_index < current_sma:
@@ -188,7 +212,6 @@ class PortfolioSimulator:
             target_buffer = current_monthly_spending * params.get('buffer_target_months', 36)
             
             if use_dynamic_buffer:
-                current_slow_sma = sum(index_history[-slow_sma_window:]) / slow_sma_window
                 
                 # Valuation ratio: Fast / Slow. Bounded between 0.5x (cheap) and 1.5x (expensive)
                 valuation_ratio = current_sma / current_slow_sma if current_slow_sma > 0 else 1.0
@@ -277,6 +300,37 @@ class PortfolioSimulator:
                 if is_in_glidepath:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
 
+                # --- NEW: Option 5 - Dual-Momentum Regime Proportional Withdrawal ---
+                elif params.get('use_proportional_withdrawal', False):
+                    # Sensor checks
+                    price_below_fast = synthetic_index < current_sma
+                    price_below_slow = synthetic_index < current_slow_sma
+                    
+                    if not price_below_fast and not price_below_slow:
+                        # Regime 1: Expansion. Clear bull market.
+                        buffer_draw_pct = 0.0
+                        
+                    elif price_below_fast and not price_below_slow:
+                        # Regime 2: The Shock (The Penthouse Fall).
+                        # Macro trend is 5-year positive, but the short-term floor just collapsed.
+                        # Do not catch the falling knife. Pivot entirely to cash.
+                        buffer_draw_pct = 1.0
+                        
+                    else:
+                        # Regimes 3 & 4: Secular Bear or Deep Recovery.
+                        # The 5-year macro trend is broken. We use elastic valuation math 
+                        # to share the load between cash and equities.
+                        valuation_ratio = synthetic_index / current_slow_sma if current_slow_sma > 0 else 1.0
+                        drawdown = max(0.0, 1.0 - valuation_ratio)
+                        
+                        # Apply multiplier to accelerate cash usage as the crash deepens
+                        buffer_draw_pct = min(1.0, drawdown * 2.0)
+                        
+                    desired_buffer_pull = required_withdrawal_net * buffer_draw_pct
+                    amount_from_buffer = min(desired_buffer_pull, current_buffer)
+                # ---------------------------------------------------------
+                # ---------------------------------------------------------
+                # ---------------------------------------------------------
                 # Option 4: High-Water Mark (Always pull from cash first)
                 elif use_high_water_mark:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
@@ -351,7 +405,14 @@ class PortfolioSimulator:
             allow_replenish = True
             if use_equity_glidepath and month <= glidepath_months:
                 allow_replenish = False
-                
+
+            # --- THE FIX: The Dead-Cat Bounce Protector ---
+            if params.get('use_proportional_withdrawal', False):
+                # Never sell equities to refill the cash bucket if we are in a macro drawdown.
+                # Equities must be allowed to recover their intrinsic value first.
+                if synthetic_index < current_slow_sma:
+                    allow_replenish = False   
+
             if params.get('use_cash_buffer', False) and allow_replenish and current_buffer < target_buffer and portfolio_value > 0:
                 
                 amount_to_add = 0.0

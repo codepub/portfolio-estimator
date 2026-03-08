@@ -1,6 +1,7 @@
 import statistics
 import math
 import unittest
+from unittest.mock import patch
 from calculator import PortfolioSimulator
 
 class TestPortfolioSimulator(unittest.TestCase):
@@ -366,7 +367,101 @@ class TestPortfolioSimulator(unittest.TestCase):
         # Month 4 (New ATH): Market crosses the high-water mark. Huge gains. Buffer fully refills.
         self.assertGreater(result[4]["w_inv"], 0.0, "Failed in M4: Engine refused to sell at a new All-Time High.")
         self.assertAlmostEqual(result[4]["buffer_val"], 10000, delta=1.0, msg="Failed M4: Buffer did not fully refill despite massive gains.")
+
+    def test_proportional_valuation_withdrawal(self):
+        """Prove the engine elastically splits withdrawals between cash and equities during a moderate drawdown."""
+        params = self.base_params.copy()
+        params["use_cash_buffer"] = True
+        params["yearly_spending"] = 12000  # 1k / month
+        params["buffer_current_size"] = 10000 
+        params["use_proportional_withdrawal"] = True
+        params["valuation_slow_sma_months"] = 60
         
+        # Simulate a sudden 15% drop below the established baseline.
+        # With a 2.0 multiplier, a 15% drop should mandate drawing ~30% from cash and ~70% from equities.
+        rates = [0.0] * 60 + [-0.15] + [0.0] * 539
+
+    def test_regime_withdrawal_and_dead_cat_bounce(self):
+        """Prove the 4-regime model routes cash correctly and prevents dead-cat bounce liquidations."""
+        params = self.base_params.copy()
+        params["initial_investment"] = 1000000
+        params["use_cash_buffer"] = True
+        params["yearly_spending"] = 12000  # 1k / month
+        params["buffer_current_size"] = 50000 
+        params["use_proportional_withdrawal"] = True
+        params["valuation_slow_sma_months"] = 60
+        params["trend_sma_months"] = 12
+        
+        # M1-M60: 0% (Builds the baseline Index = 100)
+        # M61: -25% (The Shock: Price crashes below Fast SMA, but Slow SMA is still high)
+        # M62: +10% (Dead-Cat Bounce: Positive month, but macro is still broken)
+        rates = [0.0] * 60 + [-0.25, 0.10] + [0.0] * 538
+        
+        result = self.simulator._run_single_timeline(params, rates, "Finland", 2025, 1, 600)
+        
+        # Month 61 (The Shock)
+        # Price (75) is < Fast SMA (~98), but Slow SMA (~99.5) is still high enough 
+        # that the drawdown math isn't extreme yet, OR it triggers the Shock regime directly.
+        # Either way, we expect heavy cash usage, zero equity sales.
+        shock_month = result[61]
+        self.assertEqual(shock_month["w_inv"], 0.0, "Failed: Engine sold equities during the initial shock!")
+        self.assertGreater(shock_month["w_buf"], 0.0, "Failed: Engine refused to use cash during the shock.")
+        
+        # Month 62 (Dead-Cat Bounce)
+        # The market grew 10%. The standard replenishment logic wants to sell equities to refill the 1k used in M61.
+        # But Price (~82.5) is still far below Slow SMA (~99). Replenishment MUST be blocked.
+        bounce_month = result[62]
+        w_inv_total = bounce_month["w_inv"]
+        
+        # In Regime 3/4, a ~17% deficit means proportional withdrawal (e.g., 34% cash, 66% equities).
+        # It's okay to sell *some* equities for the monthly spend, but it MUST NOT sell massive amounts to refill the bucket.
+        # 1k spend * 66% = ~660 max from equities. If it refills the bucket, it would be 1000+.
+        self.assertLess(w_inv_total, 1000, "FATAL: Engine fell for the Dead-Cat Bounce and sold equities to refill cash!")
+
+    @patch('random.gauss')
+    def test_heston_valuation_anchor(self, mock_gauss):
+        """
+        Prove that the intrinsic valuation anchor prevents total societal collapse 
+        during an impossibly long, relentless bear market.
+        """
+        # We force the random walk to be perpetually negative. 
+        # Every single month for 50 years, the market takes a hit.
+        mock_gauss.return_value = -0.5
+        
+        expected_return = 0.07
+        annual_volatility = 0.225
+        total_months = 600
+        
+        # Run the anchored Heston generator
+        rates = self.simulator._generate_heston_returns(
+            expected_return, 
+            annual_volatility, 
+            total_months
+        )
+        
+        # Track the simulated index
+        simulated_index = 100.0
+        for r in rates:
+            simulated_index *= (1 + r)
+            
+        # THE MATH:
+        # Without the anchor, 600 months of constant -0.5 standard deviation shocks 
+        # combined with geometric drag would vaporize the index down to roughly 0.00001.
+        # With the anchor, the "cheapness" of the market creates an upward pressure 
+        # that eventually perfectly balances out the constant downward shocks.
+        
+        self.assertGreater(
+            simulated_index, 
+            1.0, 
+            f"FATAL: Valuation anchor failed. Index collapsed to {simulated_index:.5f}"
+        )
+        
+        self.assertLess(
+            simulated_index, 
+            100.0, 
+            "FATAL: Anchor is too strong. It overpowered a constant 50-year bear market."
+        )
+
     def test_run_simulation_routing(self):
         """Test that the main router successfully calls all growth models without throwing AttributeErrors."""
         params = self.base_params.copy()

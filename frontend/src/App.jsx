@@ -445,9 +445,33 @@ const summaryStats = useMemo(() => {
                     </label>
                   </div>
                 </div>
-              </div>
+
+                {/* --- OPTION 5: VALUATION-BASED PROPORTIONAL WITHDRAWAL --- */}
+                <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px', marginTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input 
+                      type="checkbox" 
+                      id="use_proportional_withdrawal" 
+                      name="use_proportional_withdrawal" 
+                      checked={params.use_proportional_withdrawal || false} 
+                      onChange={handleChange} 
+                    />
+                    <label 
+                      htmlFor="use_proportional_withdrawal" 
+                      style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'help' }} 
+                      title="ELASTIC: Dynamically splits the monthly withdrawal between equities and cash based on how far the market has dropped below its 5-year average. Preserves the cash buffer during prolonged drawdowns."
+                    >
+                      5. Valuation-Based Proportional Withdrawal ℹ️
+                    </label>
+                  </div>
+                </div>
+
+
+
+              </div>              
             )}
           </div>
+
 
               </div>
             )}

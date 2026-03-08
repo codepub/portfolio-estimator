@@ -91,6 +91,7 @@ class SimulationParams(BaseModel):
     use_dynamic_buffer: bool = False
     valuation_slow_sma_months: int = 60
     use_high_water_mark: bool = False
+    use_proportional_withdrawal: bool = False
 
 @app.get("/config")
 def get_config():
