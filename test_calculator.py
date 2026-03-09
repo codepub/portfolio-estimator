@@ -653,7 +653,7 @@ class TestPortfolioSimulator(unittest.TestCase):
         Model: Heston Stochastic Volatility.
         Rounds: 500 per strategy.
         """
-        iterations = 1000
+        iterations = 500
         initial_pot = 1000000
         spend_4_pct = 26000 #too rough economy, fails with 4%
         

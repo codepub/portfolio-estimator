@@ -29,8 +29,7 @@ Counter-Cyclical Valuation (Buy the Dip): Compares a fast SMA to a slow SMA (e.g
 
 High-Water Mark (Pure Bucket Strategy): The ultimate structural defense. The engine always withdraws from cash first, and strictly refuses to sell equities to refill the buffer unless the portfolio is sitting at an all-time historical peak.
 
----
-## 🛡️ Advanced Systemic Defences
+Valuation-Based Proportional Withdrawal (THIS WORKS BEST, others just nice to compare against)
 
 Elastic Dual-Momentum (Proportional Withdrawal): A 3-Regime dynamic shock absorber utilizing 1-year and 5-year averages.
 

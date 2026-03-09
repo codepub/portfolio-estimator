@@ -99,7 +99,7 @@ class SimulationParams(BaseModel):
 @app.get("/config")
 def get_config():
     try:
-        with open("indices.json", "r") as f:
+        with open("indices_monthly.json", "r") as f:
             indices = json.load(f)
         with open("taxes.json", "r") as f:
             taxes = json.load(f)
