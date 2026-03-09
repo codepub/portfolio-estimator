@@ -10,11 +10,26 @@ services:
       - .:/app
     environment:
       - PYTHONUNBUFFERED=1
+    read_only: true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp  # Python/Uvicorn might need a tiny bit of temp space for PID files
+    security_opt:
+      - no-new-privileges:true
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    # Vite MUST be able to write to its cache, so we give it a writable memory area
+    tmpfs:
+      - /app/node_modules/.vite:mode=1777
+      - /tmp:mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "5173:5173"
     volumes:

@@ -653,9 +653,9 @@ class TestPortfolioSimulator(unittest.TestCase):
         Model: Heston Stochastic Volatility.
         Rounds: 500 per strategy.
         """
-        iterations = 500
+        iterations = 1000
         initial_pot = 1000000
-        spend_4_pct = 25000 #Heston fails with real 4%
+        spend_4_pct = 26000 #too rough economy, fails with 4%
         
         # --- STRATEGY A: THE STANDARD 4% RULE ---
         # No buffer, no guardrails, just "blind" inflation-adjusted selling.
