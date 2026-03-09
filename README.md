@@ -31,6 +31,8 @@ High-Water Mark (Pure Bucket Strategy): The ultimate structural defense. The eng
 
 Valuation-Based Proportional Withdrawal (THIS WORKS BEST, others just nice to compare against)
 
+## 🛡️ Valuation-Based Proportional Withdrawal 
+
 Elastic Dual-Momentum (Proportional Withdrawal): A 3-Regime dynamic shock absorber utilizing 1-year and 5-year averages.
 
 Regime 1 (The Hurricane): 100% cash usage during active crashes.
