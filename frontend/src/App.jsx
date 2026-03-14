@@ -131,6 +131,32 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hiddenLines, setHiddenLines] = useState([]);
+  const [isTargeting, setIsTargeting] = useState(false);
+  const [targetResults, setTargetResults] = useState(null);
+
+  const handleFindMinimumCapital = async () => {
+    setIsTargeting(true);
+    setTargetResults(null);
+    try {
+      const safePayload = { 
+        ...params, 
+        pensions: params.pensions.map(p => ({ ...p, end_year: p.end_year === '' ? null : p.end_year, end_month: p.end_month === '' ? null : p.end_month })) 
+      };
+      const response = await fetch(`http://${window.location.hostname}:8000/find_min_capital`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(safePayload) 
+      });
+      if (!response.ok) throw new Error('Targeting computer failed');
+      const json = await response.json();
+      setTargetResults(json.data);
+    } catch (err) { 
+      console.error(err); 
+      alert("Failed to calculate minimum capital. Check backend console.");
+    } finally { 
+      setIsTargeting(false); 
+    }
+  };
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -292,7 +318,31 @@ export default function App() {
     }, [chartData, activeModels, params.tax_residencies, dynamicModels, params.inflation_percentage, params.poverty_threshold]);
     
     const toggleLineVisibility = (dataKey) => { setHiddenLines(prev => prev.includes(dataKey) ? prev.filter(k => k !== dataKey) : [...prev, dataKey]); };
-    const handleChange = (e) => { const { name, value, type, checked } = e.target; setParams(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : (type === 'number' || type === 'range' ? parseFloat(value) || 0 : value) })); };
+    
+    const handleChange = (e) => { 
+      const { name, value, type, checked } = e.target; 
+      
+      setParams(prev => {
+        let nextState = { ...prev, [name]: type === 'checkbox' ? checked : (type === 'number' || type === 'range' ? parseFloat(value) || 0 : value) };
+        
+        // --- ENFORCE MUTUAL EXCLUSIVITY ---
+        if (type === 'checkbox' && checked) {
+          
+          // 1. Spending Protocols (Only one active at a time)
+          if (name === 'enable_low_season_spend') { nextState.use_guyton_klinger = false; nextState.use_proportional_attenuator = false; }
+          if (name === 'use_guyton_klinger') { nextState.enable_low_season_spend = false; nextState.use_proportional_attenuator = false; }
+          if (name === 'use_proportional_attenuator') { nextState.enable_low_season_spend = false; nextState.use_guyton_klinger = false; }
+          
+          // 2. Buffer Routing Protocols (Only 1, 2, 4, or 5 active at a time)
+          if (name === 'use_trend_guardrail') { nextState.use_equity_glidepath = false; nextState.use_high_water_mark = false; nextState.use_proportional_withdrawal = false; }
+          if (name === 'use_equity_glidepath') { nextState.use_trend_guardrail = false; nextState.use_high_water_mark = false; nextState.use_proportional_withdrawal = false; }
+          if (name === 'use_high_water_mark') { nextState.use_trend_guardrail = false; nextState.use_equity_glidepath = false; nextState.use_proportional_withdrawal = false; }
+          if (name === 'use_proportional_withdrawal') { nextState.use_trend_guardrail = false; nextState.use_equity_glidepath = false; nextState.use_high_water_mark = false; }
+        }
+        return nextState;
+      }); 
+    };
+
     const handleEngineChange = (e) => {
       const engine = e.target.value;
       const defaultVol = engine === 'heston' ? 0.225 : 0.13;
@@ -351,6 +401,13 @@ export default function App() {
             <div style={inputGroupStyle}><label style={labelStyle}>Yearly Spending (€)</label><input type="number" name="yearly_spending" value={params.yearly_spending} onChange={handleChange} style={inputStyle} /></div>
             <div style={inputGroupStyle}><label style={labelStyle}>Inflation Rate (Decimal)</label><input type="number" name="inflation_percentage" value={params.inflation_percentage} onChange={handleChange} step="0.01" style={inputStyle} /></div>
             
+            <div style={inputGroupStyle}>
+              <label style={labelStyle} title="If inflation-adjusted monthly spending falls below this, the timeline is flagged as 'Poverty' even if the portfolio survives.">
+                Poverty Disqualifier Threshold (€/mo Real) ℹ️
+              </label>
+              <input type="number" name="poverty_threshold" value={params.poverty_threshold} onChange={handleChange} style={inputStyle} />
+            </div>
+
             <div style={{ ...inputGroupStyle, backgroundColor: '#fdf2f8', padding: '12px', borderRadius: '6px', border: '1px solid #fbcfe8' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.enable_low_season_spend ? '12px' : '0' }}><input type="checkbox" id="enable_low_season_spend" name="enable_low_season_spend" checked={params.enable_low_season_spend} onChange={handleChange} /><label htmlFor="enable_low_season_spend" style={{ fontSize: '14px', fontWeight: 'bold', color: '#831843' }}>Enable Low Season Spending</label></div>
               {params.enable_low_season_spend && (<div><label style={labelStyle}>Belt-Tightening Cut (Decimal)</label><input type="number" name="low_season_cut_percentage" value={params.low_season_cut_percentage} onChange={handleChange} step="0.01" max="1" min="0" style={inputStyle} /></div>)}
@@ -418,14 +475,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* --- POVERTY DISQUALIFIER --- */}
-            <div style={{ ...inputGroupStyle, backgroundColor: '#fee2e2', padding: '12px', borderRadius: '6px', border: '1px solid #fca5a5', marginTop: '16px' }}>
-              <label style={labelStyle} title="If inflation-adjusted monthly spending falls below this, the timeline is flagged as 'Poverty' even if the portfolio survives.">
-                Poverty Disqualifier Threshold (€/mo Real) ℹ️
-              </label>
-              <input type="number" name="poverty_threshold" value={params.poverty_threshold} onChange={handleChange} style={inputStyle} />
             </div>
 
             {/* --- CASH BUFFER SECTION --- */}
@@ -708,6 +757,60 @@ export default function App() {
               </div>
             </div>
 
+            {/* --- TARGETING COMPUTER PANEL --- */}
+            <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h4 style={{ margin: '0 0 4px 0', color: '#0f172a' }}>🎯 Minimum Required Capital Calculator</h4>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>Calculates the exact starting mass needed to survive the timeline while staying above your €{params.poverty_threshold}/mo poverty floor.</p>
+                </div>
+                <button 
+                  onClick={handleFindMinimumCapital} 
+                  disabled={isTargeting}
+                  style={{ backgroundColor: isTargeting ? '#94a3b8' : '#2563eb', color: '#fff', padding: '10px 20px', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: isTargeting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
+                  {isTargeting ? '⚙️ Calculating...' : 'Find Minimum Capital'}
+                </button>
+              </div>
+              
+              {targetResults && (
+                <div style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
+                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                   <thead style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
+                      <tr>
+                        <th style={{ padding: '10px 12px' }}>Growth Model</th>
+                        <th style={{ padding: '10px 12px' }}>Tax</th>
+                        <th style={{ padding: '10px 12px' }}>Active Buffer Protocol</th>
+                        <th style={{ padding: '10px 12px' }}>Active Spending Rule</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>95%+ Target</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>80-94% Target</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>60-79% Target</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>&lt;60% Target</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Min Starting Capital</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {targetResults.map((res, idx) => (
+                        <tr key={idx} style={{ borderBottom: idx === targetResults.length - 1 ? 'none' : '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '10px 12px', fontWeight: '500' }}>{dynamicModels.displayNames[res.model] || res.model}</td>
+                          <td style={{ padding: '10px 12px' }}>{res.tax.replace(/_/g, ' ')}</td>
+                          <td style={{ padding: '10px 12px', color: '#b45309' }}>{res.buffer_protocol}</td>
+                          <td style={{ padding: '10px 12px', color: '#4338ca' }}>{res.spending_protocol}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>{res.bins["95%+"]} yrs</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', color: '#65a30d' }}>{res.bins["80-94%"]} yrs</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', color: '#d97706' }}>{res.bins["60-79%"]} yrs</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', color: '#dc2626' }}>{res.bins["<60%"]} yrs</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 'bold', color: '#16a34a', fontSize: '14px' }}>
+                            {new Intl.NumberFormat('fi-FI', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(res.required_capital)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             <div style={{ flex: '1 1 auto', minHeight: '300px', marginBottom: '20px', backgroundColor: '#fff', padding: '20px 0 0 0', borderRadius: '8px', border: '1px solid #e5e7eb', position: 'relative', zIndex: 10 }}>
               <h4 style={{ position: 'absolute', top: 5, left: 20, margin: 0, fontSize: '13px', color: '#6b7280' }}>Total Portfolio Assets (Left) vs. Return Rate (Right)</h4>
               <ResponsiveContainer width="99%" height="100%">
@@ -824,7 +927,7 @@ export default function App() {
                         <td style={{ padding: '12px 16px' }}>
                           {stat.finalValue > 0 
                             ? (stat.povertyMonth 
-                                ? <span style={{ color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>Poverty {formatMonthYear(stat.povertyMonth)}</span>
+                                ? <span style={{ color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Poverty {formatMonthYear(stat.povertyMonth)}</span>
                                 : <span style={{ color: '#166534', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Sustainable</span>)
                             : stat.isBridgedByPension
                               ? <span style={{ color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Unsustainable {formatMonthYear((stat.depletionMonth || 1))}</span>

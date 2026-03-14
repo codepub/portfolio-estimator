@@ -617,36 +617,41 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
         # Teardown
         del rates_matrix, params_buf, params_gk, params_att
 
-    def test_minimum_capital_hybrid_search(self):
+    def test_minimum_capital_six_way_search_with_bins(self):
         """
-        Binary search targeting: €40,000/yr P10 survival.
-        Compares Pure Buffer vs. Pure Dimmer vs. The Hybrid (Buffer + Dimmer).
+        Binary search targeting: €60,000/yr P10 survival.
+        Poverty threshold: €30,000/yr real spend.
+        Compares 6 regimes (including pure Constant Spend).
+        Outputs a 4-bin histogram of the lived experience (Years spent at various spending levels).
         """
         import random
         import copy
         
-        # Lock the Heston universe so all models face the exact same 200 storms
+        # Lock the Heston universe 
         random.seed(42)
-        iterations = 2000
+        iterations = 200
         total_months = 600
         inflation_rate = 0.02
-        target_spend = 40000.0
+        target_spend = 60000.0
+        poverty_threshold_annual = 30000.0  
         
         print(f"\n[INIT] Generating frozen matrix of {iterations} Heston timelines...")
         rates_matrix = [self.simulator._generate_heston_returns(0.07, 0.225, total_months) for _ in range(iterations)]
         
         def find_minimum_safe_capital(base_params, strategy_name, is_buffer_strategy=False):
-            low = 500000.0
-            high = 3000000.0
-            tolerance = 20000.0 
+            # Widened bounds for the Constant Spend model which requires massive capital
+            low = 1000000.0
+            high = 8000000.0
+            tolerance = 25000.0 
             best_safe_capital = high
+            best_p10_spends = []
             
             print(f"\n--- Binary Search: {strategy_name} ---")
             
             while (high - low) > tolerance:
                 test_cap = (low + high) / 2.0
+                timeline_results = []
                 
-                final_wealths = []
                 for rates in rates_matrix:
                     params = copy.deepcopy(base_params)
                     
@@ -661,56 +666,106 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
                     params['inflation_percentage'] = inflation_rate
                     
                     res = self.simulator._run_single_timeline(params, rates, "Finland", 2026, 1, total_months)
-                    final_wealths.append(res[total_months]['value'])
+                    
+                    annual_real_spends = []
+                    for year in range(1, 51):
+                        start_m = (year - 1) * 12 + 1
+                        end_m = year * 12
+                        discount = (1 + inflation_rate) ** year
+                        real_spend = sum(res[m]['spend'] for m in range(start_m, end_m + 1)) / discount
+                        annual_real_spends.append(real_spend)
+                        
+                    timeline_results.append({
+                        'final_wealth': res[total_months]['value'],
+                        'min_real_spend': min(annual_real_spends),
+                        'spends': annual_real_spends
+                    })
                 
-                final_wealths.sort()
-                p10_wealth = final_wealths[int(iterations * 0.10)]
+                timeline_results.sort(key=lambda x: x['final_wealth'])
+                p10_outcome = timeline_results[int(iterations * 0.10)]
                 
-                if p10_wealth > 0:
+                if p10_outcome['final_wealth'] > 0 and p10_outcome['min_real_spend'] >= poverty_threshold_annual:
                     best_safe_capital = test_cap
+                    best_p10_spends = p10_outcome['spends']
                     high = test_cap 
-                    print(f" [PASS] €{test_cap:<10,.0f} -> Survived P10 (Checking lower...)")
+                    print(f" [PASS] €{test_cap:<10,.0f} -> Survived P10 (Min Spend: €{p10_outcome['min_real_spend']:,.0f})")
                 else:
                     low = test_cap  
-                    print(f" [FAIL] €{test_cap:<10,.0f} -> Bankrupt in P10 (Checking higher...)")
+                    fail_reason = "Bankrupt" if p10_outcome['final_wealth'] <= 0 else f"Poverty (Hit €{p10_outcome['min_real_spend']:,.0f})"
+                    print(f" [FAIL] €{test_cap:<10,.0f} -> {fail_reason} in P10")
+            
+            # Categorize the 50 years of the winning P10 timeline into 4 bins
+            bins = {"30k-40k": 0, "40k-50k": 0, "50k-60k": 0, "60k+": 0}
+            if best_p10_spends:
+                for s in best_p10_spends:
+                    if s < 40000: bins["30k-40k"] += 1
+                    elif s < 50000: bins["40k-50k"] += 1
+                    elif s < 60000: bins["50k-60k"] += 1
+                    else: bins["60k+"] += 1
                     
-            return best_safe_capital
+            return best_safe_capital, bins
+
+        # --- 0. Standard Constant Spend (No Guardrails) ---
+        params_std = copy.deepcopy(self.base_params)
+        params_std.update({'use_cash_buffer': False, 'use_guyton_klinger': False,
+                           'use_proportional_attenuator': False, 'enable_low_season_spend': False})
 
         # --- 1. Pure Buffer Strategy (Opt 5+6) ---
         params_buf = copy.deepcopy(self.base_params)
         params_buf.update({'use_cash_buffer': True, 'use_proportional_withdrawal': True, 
                            'equity_critical_mass_floor': 0.20, 'equity_replenish_threshold': 0.50,
-                           'use_guyton_klinger': False, 'use_proportional_attenuator': False})
+                           'use_guyton_klinger': False, 'use_proportional_attenuator': False,
+                           'enable_low_season_spend': False})
+                           
+        # --- 2. Binary Austerity (Low Season Spend Cut) ---
+        params_aust = copy.deepcopy(self.base_params)
+        params_aust.update({'use_cash_buffer': False, 'use_guyton_klinger': False,
+                            'use_proportional_attenuator': False, 'enable_low_season_spend': True,
+                            'low_season_cut_percentage': 0.20}) 
         
-        # --- 2. Pure Elastic Dimmer ---
+        # --- 3. Guyton-Klinger Guardrails ---
+        params_gk = copy.deepcopy(self.base_params)
+        params_gk.update({'use_cash_buffer': False, 'use_guyton_klinger': True, 
+                          'gk_upper_threshold': 0.20, 'gk_lower_threshold': 0.20,
+                          'gk_cut_rate': 0.10, 'gk_raise_rate': 0.10, 'gk_allow_raises': True,
+                          'use_proportional_attenuator': False, 'enable_low_season_spend': False})
+        
+        # --- 4. Pure Elastic Dimmer ---
         params_att = copy.deepcopy(self.base_params)
         params_att.update({'use_cash_buffer': False, 'use_guyton_klinger': False,
-                           'use_proportional_attenuator': True, 'attenuator_max_cut': 0.50})
+                           'use_proportional_attenuator': True, 'attenuator_max_cut': 0.50,
+                           'enable_low_season_spend': False})
 
-        # --- 3. THE HYBRID (Buffer + Dimmer) ---
+        # --- 5. THE HYBRID (Buffer + Dimmer) ---
         params_hyb = copy.deepcopy(self.base_params)
         params_hyb.update({'use_cash_buffer': True, 'use_proportional_withdrawal': True, 
                            'equity_critical_mass_floor': 0.20, 'equity_replenish_threshold': 0.50,
                            'use_guyton_klinger': False, 'use_proportional_attenuator': True, 
-                           'attenuator_max_cut': 0.50})
+                           'attenuator_max_cut': 0.50, 'enable_low_season_spend': False})
 
-        print("="*70)
-        print(f" TARGETING: Minimum Capital to guarantee €{target_spend:,.0f}/yr in P10")
-        print("="*70)
+        print("="*110)
+        print(f" TARGETING: Minimum Capital for €{target_spend:,.0f}/yr (Poverty Floor: €{poverty_threshold_annual:,.0f}/yr)")
+        print("="*110)
         
-        req_buf = find_minimum_safe_capital(params_buf, "Pure Cash Buffer (Opt 5+6)", is_buffer_strategy=True)
-        req_att = find_minimum_safe_capital(params_att, "Pure Elastic Dimmer", is_buffer_strategy=False)
-        req_hyb = find_minimum_safe_capital(params_hyb, "The Hybrid (Buffer + Dimmer)", is_buffer_strategy=True)
+        results = [
+            ("Constant Spend (Baseline)", *find_minimum_safe_capital(params_std, "Constant Spend (Baseline)", False)),
+            ("Pure Cash Buffer", *find_minimum_safe_capital(params_buf, "Pure Cash Buffer (Opt 5+6)", True)),
+            ("Binary Austerity", *find_minimum_safe_capital(params_aust, "Binary Austerity (20% Cut)", False)),
+            ("Guyton-Klinger", *find_minimum_safe_capital(params_gk, "Guyton-Klinger Guardrails", False)),
+            ("Pure Elastic Dimmer", *find_minimum_safe_capital(params_att, "Pure Elastic Dimmer", False)),
+            ("The Hybrid (Buffer+Dimmer)", *find_minimum_safe_capital(params_hyb, "The Hybrid (Buffer+Dimmer)", True))
+        ]
         
-        print("\n" + "="*70)
-        print(" MASS REQUIREMENT RESULTS (Worst 10% Heston 50-Year)")
-        print("="*70)
-        print(f"Pure Cash Buffer (Opt 5+6) : €{req_buf:,.0f} required")
-        print(f"Pure Elastic Dimmer        : €{req_att:,.0f} required")
-        print(f"The Hybrid (Buffer+Dimmer) : €{req_hyb:,.0f} required")
-        print("="*70 + "\n")
+        print("\n" + "="*110)
+        print(f" FINAL RESULTS (Worst 10% Heston 50-Year | €60k Target | €30k Floor)")
+        print("="*110)
+        print(f"{'Strategy':<28} | {'Required Capital':<18} | {'€60k+':<8} | {'€50k-60k':<10} | {'€40k-50k':<10} | {'€30k-40k':<10}")
+        print("-" * 110)
         
-        del rates_matrix, params_buf, params_att, params_hyb
-
+        for name, req_cap, bins in results:
+            print(f"{name:<28} | €{req_cap:<17,.0f} | {bins['60k+']:<5} yrs | {bins['50k-60k']:<8} yrs | {bins['40k-50k']:<8} yrs | {bins['30k-40k']:<8} yrs")
+            
+        print("="*110 + "\n")
+                
 if __name__ == '__main__':
     unittest.main(verbosity=2)
