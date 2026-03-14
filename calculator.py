@@ -173,10 +173,26 @@ class PortfolioSimulator:
         
         use_high_water_mark = params.get('use_high_water_mark', False)
         
+        # --- OPTION 1: GUYTON-KLINGER STATE ---
+        use_guyton_klinger = params.get('use_guyton_klinger', False)
+        gk_upper_threshold = params.get('gk_upper_threshold', 0.20)
+        gk_lower_threshold = params.get('gk_lower_threshold', 0.20)
+        gk_cut_rate = params.get('gk_cut_rate', 0.10)
+        gk_raise_rate = params.get('gk_raise_rate', 0.10)
+        gk_allow_raises = params.get('gk_allow_raises', True) # The frugal toggle
+        
+        initial_withdrawal_rate = 0.0
+        total_initial_assets = params['initial_investment'] + params.get('buffer_current_size', 0.0)
+        if total_initial_assets > 0:
+            initial_withdrawal_rate = params['yearly_spending'] / total_initial_assets
+            
+        gk_spend_multiplier = 1.0
+        # --------------------------------------
+
         # --- THE FIX: MEMORY ALLOCATION ---
         # Ensure the history array is long enough to support the slow SMA if ANY 
         # feature requires it (both Option 3 and Option 5 use the 5-yr average).
-        requires_slow_sma = use_dynamic_buffer or use_proportional_withdrawal
+        requires_slow_sma = use_dynamic_buffer or use_proportional_withdrawal or params.get('use_proportional_attenuator', False)
         max_window = max(sma_window, slow_sma_window) if requires_slow_sma else sma_window
         index_history = [synthetic_index] * max_window
         # ------------------------------------
@@ -187,6 +203,24 @@ class PortfolioSimulator:
      
             if calendar_month == 1:
                 current_year_gains_withdrawn = 0
+                
+                # --- OPTION 1: GUYTON-KLINGER ANNUAL EVALUATION ---
+                if month > 1 and use_guyton_klinger:
+                    current_assets_for_gk = portfolio_value + current_buffer
+                    if current_assets_for_gk > 0:
+                        # Calculate current WR based on the intended spend for the upcoming year
+                        current_wr = (current_monthly_spending * 12 * gk_spend_multiplier) / current_assets_for_gk
+                        
+                        # Rule 1: Capital Preservation (Cut)
+                        # Example: If initial WR was 4%, and current WR exceeds 4.8% (4 * 1.2), cut spending by 10%
+                        if current_wr > initial_withdrawal_rate * (1 + gk_upper_threshold):
+                            gk_spend_multiplier *= (1 - gk_cut_rate)
+                        
+                        # Rule 2: Prosperity (Raise)
+                        # Example: If current WR drops below 3.2% (4 * 0.8), raise spending by 10%
+                        elif gk_allow_raises and current_wr < initial_withdrawal_rate * (1 - gk_lower_threshold):
+                            gk_spend_multiplier *= (1 + gk_raise_rate)
+                # --------------------------------------------------
 
             growth_rate = rates[month - 1]
             portfolio_value *= (1 + growth_rate)
@@ -274,12 +308,32 @@ class PortfolioSimulator:
                     annual_tax = self.calculate_pension_tax(gross_pension * 12, regime)
                     total_net_pension_this_month += gross_pension - (annual_tax / 12)
 
-            effective_monthly_spending = current_monthly_spending
-            is_austerity = False
-            if params.get('enable_low_season_spend', False) and growth_rate < 0:
-                effective_monthly_spending = current_monthly_spending * (1 - params.get('low_season_cut_percentage', 0.10))
-                is_austerity = True
+            # Apply the persistent Guyton-Klinger multiplier first (if active)
+            effective_monthly_spending = current_monthly_spending * gk_spend_multiplier
+            
+            # --- OPTION 3: THE PROPORTIONAL ATTENUATOR (ELASTIC DIMMER) ---
+            use_proportional_attenuator = params.get('use_proportional_attenuator', False)
+            attenuator_max_cut = params.get('attenuator_max_cut', 0.50) # Hard floor so you don't starve
+            
+            if use_proportional_attenuator and current_slow_sma > 0:
+                # Only dim the lights if the current index is fundamentally underwater
+                if synthetic_index < current_slow_sma:
+                    # Calculate exact mathematical distance from the 5-year trend
+                    drawdown_pct = (current_slow_sma - synthetic_index) / current_slow_sma
+                    
+                    # Apply the cut, constrained by the maximum allowed survival floor
+                    actual_cut = min(drawdown_pct, attenuator_max_cut)
+                    effective_monthly_spending *= (1.0 - actual_cut)
+            # --------------------------------------------------------------
 
+            is_austerity = False
+            
+            # The legacy binary austerity now acts as a temporary overlay on top of the others
+            if params.get('enable_low_season_spend', False) and growth_rate < 0:
+                effective_monthly_spending *= (1 - params.get('low_season_cut_percentage', 0.10))
+                is_austerity = True            
+            is_austerity = False
+            
             # --- NEW: AUTONOMOUS SURPLUS REINVESTMENT ---
             surplus = total_net_pension_this_month - effective_monthly_spending
             

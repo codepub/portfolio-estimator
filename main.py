@@ -95,6 +95,14 @@ class SimulationParams(BaseModel):
     throttle_multiplier: int = 3
     equity_critical_mass_floor: float = 0.2
     equity_replenish_threshold: float = 0.5
+    use_guyton_klinger: bool = False
+    gk_upper_threshold: float = 0.20
+    gk_lower_threshold: float = 0.20
+    gk_cut_rate: float = 0.10
+    gk_raise_rate: float = 0.10
+    gk_allow_raises: bool = True
+    use_proportional_attenuator: bool = False
+    attenuator_max_cut:float = 0.50
 
 @app.get("/config")
 def get_config():

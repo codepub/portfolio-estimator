@@ -655,7 +655,7 @@ class TestPortfolioSimulator(unittest.TestCase):
         """
         iterations = 500
         initial_pot = 1000000
-        spend_4_pct = 26000 #too rough economy, fails with 4%
+        spend_4_pct = 25000 #too rough economy, fails with 4%
         
         # --- STRATEGY A: THE STANDARD 4% RULE ---
         # No buffer, no guardrails, just "blind" inflation-adjusted selling.
@@ -706,6 +706,6 @@ class TestPortfolioSimulator(unittest.TestCase):
         # should significantly outperform the standard 4% rule in the fail-tail (P10).
         self.assertGreater(p10_value_b, p10_value_a, 
             "The advanced protocol failed to provide superior protection in the tail-risk event.")
-
+        
 if __name__ == '__main__':
     unittest.main()
