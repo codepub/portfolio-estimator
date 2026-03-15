@@ -17,19 +17,122 @@ class PortfolioSimulator:
             
         elif config["type"] in ["tiered", "progressive_estimate"]:
             tax = 0.0
-            remaining_gross = gross_annual_pension
+            previous_limit = 0.0
+            
             for bracket in config["brackets"]:
                 limit = bracket.get("limit")
                 rate = bracket["rate"]
-                if limit is None or remaining_gross <= limit:
-                    tax += remaining_gross * rate
+                
+                if limit is None:
+                    # This is the "infinite" top bracket
+                    tax += (gross_annual_pension - previous_limit) * rate
+                    break
+                    
+                if gross_annual_pension <= limit:
+                    # Total income falls within this specific bracket slice
+                    tax += (gross_annual_pension - previous_limit) * rate
                     break
                 else:
-                    tax += limit * rate
-                    remaining_gross -= limit
+                    # Income exceeds this bracket. Fill this slice and move to the next.
+                    bracket_width = limit - previous_limit
+                    tax += bracket_width * rate
+                    previous_limit = limit
+                    
             return tax
+            
         return 0.0
+    
+    def _calculate_gross_withdrawal(self, net_needed, profit_percentage, tax_config, current_year_gains):
+        """
+        Reverse-engineers the exact gross withdrawal required to yield a specific net amount, 
+        slicing the withdrawal progressively across tiered tax brackets.
+        """
+        if net_needed <= 0:
+            return 0.0
+        if profit_percentage <= 0:
+            return net_needed # No profit means no tax, gross == net
+            
+        if tax_config["type"] == "flat":
+            return net_needed / (1 - (profit_percentage * tax_config["rate"]))
+            
+        elif tax_config["type"] in ["tiered", "progressive_estimate"]:
+            gross_total = 0.0
+            remaining_net = net_needed
+            current_g = current_year_gains
+            
+            for bracket in tax_config["brackets"]:
+                limit = bracket.get("limit")
+                rate = bracket["rate"]
+                
+                # Skip brackets we've already filled earlier in the year
+                if limit is not None and current_g >= limit:
+                    continue
+                    
+                # Calculate remaining capacity of gains in this specific bracket
+                capacity_gains = float('inf') if limit is None else limit - current_g
+                max_gross_in_bracket = capacity_gains / profit_percentage
+                max_net_in_bracket = max_gross_in_bracket * (1 - (profit_percentage * rate))
+                
+                if remaining_net <= max_net_in_bracket:
+                    # We can finish the rest of the withdrawal inside this bracket
+                    gross_here = remaining_net / (1 - (profit_percentage * rate))
+                    gross_total += gross_here
+                    break
+                else:
+                    # We consume this entire bracket slice and move up to the next bracket
+                    gross_total += max_gross_in_bracket
+                    current_g += capacity_gains
+                    remaining_net -= max_net_in_bracket
+                    
+            return gross_total
+            
+        return net_needed
 
+    def _calculate_net_from_gross(self, gross_amount, profit_percentage, tax_config, current_year_gains):
+        """
+        Forward-calculates the exact net proceeds from a gross withdrawal, 
+        slicing the taxable gains progressively across tiered tax brackets.
+        """
+        if gross_amount <= 0:
+            return 0.0
+        if profit_percentage <= 0:
+            return gross_amount
+
+        total_gains = gross_amount * profit_percentage
+        
+        if tax_config["type"] == "flat":
+            tax_owed = total_gains * tax_config["rate"]
+            return gross_amount - tax_owed
+            
+        elif tax_config["type"] in ["tiered", "progressive_estimate"]:
+            tax_owed = 0.0
+            remaining_gains = total_gains
+            current_g = current_year_gains
+            
+            for bracket in tax_config["brackets"]:
+                limit = bracket.get("limit")
+                rate = bracket["rate"]
+                
+                # Skip brackets we've already filled
+                if limit is not None and current_g >= limit:
+                    continue
+                    
+                # Calculate remaining capacity of gains in this specific bracket
+                capacity = float('inf') if limit is None else limit - current_g
+                
+                if remaining_gains <= capacity:
+                    # All remaining gains fit perfectly in this bracket slice
+                    tax_owed += remaining_gains * rate
+                    break
+                else:
+                    # Fill this bracket slice with gains and move to the next higher bracket
+                    tax_owed += capacity * rate
+                    current_g += capacity
+                    remaining_gains -= capacity
+                    
+            return gross_amount - tax_owed
+            
+        return gross_amount
 
     def _extract_historical_rates(self, historical_data, params, total_months):
         """
@@ -127,8 +230,6 @@ class PortfolioSimulator:
             trend_index *= math.exp(base_mu * dt)
             
             # 2. Calculate the deviation premium
-            # If the market crashes to half its fundamental value, this adds a persistent 
-            # ~3.5% annualized tailwind to the expected return until it recovers.
             valuation_premium = reversion_strength * math.log(trend_index / simulated_index)
             
             # 3. Apply the dynamic drift
@@ -162,7 +263,6 @@ class PortfolioSimulator:
         # --- SIGNAL PROCESSING STATE ---
         synthetic_index = 100.0
         high_water_mark_index = 100.0
-        # We track the pure synthetic index to avoid the "Unreachable Peak" trap
         
         use_trend_guardrail = params.get('use_trend_guardrail', False)
         use_dynamic_buffer = params.get('use_dynamic_buffer', False)
@@ -179,7 +279,7 @@ class PortfolioSimulator:
         gk_lower_threshold = params.get('gk_lower_threshold', 0.20)
         gk_cut_rate = params.get('gk_cut_rate', 0.10)
         gk_raise_rate = params.get('gk_raise_rate', 0.10)
-        gk_allow_raises = params.get('gk_allow_raises', True) # The frugal toggle
+        gk_allow_raises = params.get('gk_allow_raises', True) 
         
         initial_withdrawal_rate = 0.0
         total_initial_assets = params['initial_investment'] + params.get('buffer_current_size', 0.0)
@@ -190,8 +290,6 @@ class PortfolioSimulator:
         # --------------------------------------
 
         # --- THE FIX: MEMORY ALLOCATION ---
-        # Ensure the history array is long enough to support the slow SMA if ANY 
-        # feature requires it (both Option 3 and Option 5 use the 5-yr average).
         requires_slow_sma = use_dynamic_buffer or use_proportional_withdrawal or params.get('use_proportional_attenuator', False)
         max_window = max(sma_window, slow_sma_window) if requires_slow_sma else sma_window
         index_history = [synthetic_index] * max_window
@@ -208,16 +306,10 @@ class PortfolioSimulator:
                 if month > 1 and use_guyton_klinger:
                     current_assets_for_gk = portfolio_value + current_buffer
                     if current_assets_for_gk > 0:
-                        # Calculate current WR based on the intended spend for the upcoming year
                         current_wr = (current_monthly_spending * 12 * gk_spend_multiplier) / current_assets_for_gk
                         
-                        # Rule 1: Capital Preservation (Cut)
-                        # Example: If initial WR was 4%, and current WR exceeds 4.8% (4 * 1.2), cut spending by 10%
                         if current_wr > initial_withdrawal_rate * (1 + gk_upper_threshold):
                             gk_spend_multiplier *= (1 - gk_cut_rate)
-                        
-                        # Rule 2: Prosperity (Raise)
-                        # Example: If current WR drops below 3.2% (4 * 0.8), raise spending by 10%
                         elif gk_allow_raises and current_wr < initial_withdrawal_rate * (1 - gk_lower_threshold):
                             gk_spend_multiplier *= (1 + gk_raise_rate)
                 # --------------------------------------------------
@@ -245,25 +337,18 @@ class PortfolioSimulator:
                 is_macro_downtrend = True
 
             # Option 3: Dynamic Buffer Sizing & Buy-the-Dip Protocol
-            # We start with the baseline target
             target_buffer = current_monthly_spending * params.get('buffer_target_months', 36)
             
             if use_dynamic_buffer:
-                
-                # Valuation ratio: Fast / Slow. Bounded between 0.5x (cheap) and 1.5x (expensive)
                 valuation_ratio = current_sma / current_slow_sma if current_slow_sma > 0 else 1.0
                 buffer_multiplier = max(0.5, min(1.5, valuation_ratio))
-                
-                # Apply the multiplier to dynamically resize the target buffer
                 target_buffer *= buffer_multiplier
                 
-                # Counter-Cyclical Action: If the dynamically shrunk target is now lower than 
-                # our actual cash on hand, we autonomously deploy the excess cash to buy cheap equities.
                 if current_buffer > target_buffer and portfolio_value > 0:
                     excess_cash = current_buffer - target_buffer
                     current_buffer -= excess_cash
                     portfolio_value += excess_cash
-                    total_principal += excess_cash # Dilute profit percentage to reflect higher cost basis
+                    total_principal += excess_cash 
             # ------------------------------------------------
 
             # Option 4: Track the All-Time High of the Market ---
@@ -279,22 +364,18 @@ class PortfolioSimulator:
                         portfolio_value += event['amount']
                         total_principal += event['amount']
 
-            # --- NEW: LIFESTYLE SPENDING CHANGES ---
+            # --- LIFESTYLE SPENDING CHANGES ---
             for event in params.get('spending_events', []):
                 event_abs_month = (event['year'] * 12) + event['month'] - 1
                 if current_absolute_month == event_abs_month:
-                    # Inflate the user's "today's euros" input to match the current timeline's nominal reality
                     inflated_new_spend = event['amount'] * ((1 + monthly_inflation_rate) ** (month - 1))
                     current_monthly_spending = inflated_new_spend / 12
 
             total_net_pension_this_month = 0
             for i, pension in enumerate(params['pensions']):
                 pension_start_absolute_month = (pension['start_year'] * 12) + pension['start_month'] - 1
-                
-                # Assume active if past the start date
                 is_active = current_absolute_month >= pension_start_absolute_month
                 
-                # Override to false if we have passed a defined end date
                 if pension.get('end_year') and pension.get('end_month'):
                     pension_end_absolute_month = (pension['end_year'] * 12) + pension['end_month'] - 1
                     if current_absolute_month > pension_end_absolute_month:
@@ -302,48 +383,36 @@ class PortfolioSimulator:
 
                 if is_active:
                     gross_pension = current_pension_values[i]
-                    # Extract the selected regime, defaulting to Finland
                     regime = params['pensions'][i].get('tax_regime', 'Finland') 
-                    
                     annual_tax = self.calculate_pension_tax(gross_pension * 12, regime)
                     total_net_pension_this_month += gross_pension - (annual_tax / 12)
 
-            # Apply the persistent Guyton-Klinger multiplier first (if active)
             effective_monthly_spending = current_monthly_spending * gk_spend_multiplier
             
             # --- OPTION 3: THE PROPORTIONAL ATTENUATOR (ELASTIC DIMMER) ---
             use_proportional_attenuator = params.get('use_proportional_attenuator', False)
-            attenuator_max_cut = params.get('attenuator_max_cut', 0.50) # Hard floor so you don't starve
+            attenuator_max_cut = params.get('attenuator_max_cut', 0.50) 
             
             if use_proportional_attenuator and current_slow_sma > 0:
-                # Only dim the lights if the current index is fundamentally underwater
                 if synthetic_index < current_slow_sma:
-                    # Calculate exact mathematical distance from the 5-year trend
                     drawdown_pct = (current_slow_sma - synthetic_index) / current_slow_sma
-                    
-                    # Apply the cut, constrained by the maximum allowed survival floor
                     actual_cut = min(drawdown_pct, attenuator_max_cut)
                     effective_monthly_spending *= (1.0 - actual_cut)
             # --------------------------------------------------------------
 
             is_austerity = False
-            
-            # The legacy binary austerity now acts as a temporary overlay on top of the others
             if params.get('enable_low_season_spend', False) and growth_rate < 0:
                 effective_monthly_spending *= (1 - params.get('low_season_cut_percentage', 0.10))
                 is_austerity = True            
-            is_austerity = False
             
-            # --- NEW: AUTONOMOUS SURPLUS REINVESTMENT ---
+            # --- AUTONOMOUS SURPLUS REINVESTMENT ---
             surplus = total_net_pension_this_month - effective_monthly_spending
             
             if surplus > 0:
-                # Pension covers everything. No withdrawal needed. Reinvest the extra cash.
                 required_withdrawal_net = 0.0
                 portfolio_value += surplus
-                total_principal += surplus  # Dilutes profit percentage
+                total_principal += surplus 
             else:
-                # Standard withdrawal scenario
                 required_withdrawal_net = abs(surplus)
 
             # --- UPDATED: Buffer Routing Logic ---
@@ -358,50 +427,36 @@ class PortfolioSimulator:
                 if total_assets_for_check > 0:
                     equity_ratio = portfolio_value / total_assets_for_check
                     critical_floor = params.get('equity_critical_mass_floor', 0.20)
-                    # If equities fall below 50% of net worth, trigger the survival floor
                     if equity_ratio < critical_floor:
                         is_critically_low_equities = True
 
                 # Option 2: Equity Glidepath (Priority 1)
-                # Deliberately drain the buffer for all expenses during the initial danger zone
                 if is_in_glidepath:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
                 # Priority 2: Critical Mass Survival Floor
                 elif is_critically_low_equities:
-                    # Force 100% of living expenses to come from cash to protect remaining shares
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
-                # --- UPDATED: Option 5 - 3-Regime Dual-Momentum ---
+                # Option 5 - 3-Regime Dual-Momentum
                 elif params.get('use_proportional_withdrawal', False):
                     
                     price_below_fast = synthetic_index < current_sma
                     price_below_slow = synthetic_index < current_slow_sma
+                    momentum_broken = current_sma < current_slow_sma
                     
                     if price_below_fast:
-                        # Regime 1: The Hurricane.
-                        # The short-term trend is broken. The bleeding is active.
-                        # Absolute capital preservation. 100% cash.
                         buffer_draw_pct = 1.0
                         
-                    elif not price_below_fast and price_below_slow:
-                        # Regime 2: Early Recovery (The Valley).
-                        # The bleeding stopped (price > 1yr avg), but we are still fundamentally 
-                        # underwater (price < 5yr avg). Use elastic math to share the load.
-                        valuation_ratio = synthetic_index / current_slow_sma if current_slow_sma > 0 else 1.0
+                    elif price_below_slow or momentum_broken:
+                        valuation_ratio = current_sma / current_slow_sma if current_slow_sma > 0 else 1.0
                         drawdown = max(0.0, 1.0 - valuation_ratio)
                         buffer_draw_pct = min(1.0, drawdown * 2.0)
                         
                     else:
-                        # Regime 3: Clear Skies.
-                        # Price is above both the 1-year and 5-year averages.
-                        # 100% equities, preserve the cash buffer.
                         buffer_draw_pct = 0.0
                         
                     desired_buffer_pull = required_withdrawal_net * buffer_draw_pct
                     amount_from_buffer = min(desired_buffer_pull, current_buffer)
-                # ---------------------------------------------------------
-                # ---------------------------------------------------------
-                # ---------------------------------------------------------
-                # ---------------------------------------------------------
+
                 # Option 4: High-Water Mark (Always pull from cash first)
                 elif use_high_water_mark:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
@@ -418,36 +473,52 @@ class PortfolioSimulator:
                 required_withdrawal_net -= amount_from_buffer
             # ------------------------------------------------
 
+            # --- Hoist tax config outside the conditional block ---
             gross_withdrawal = 0.0
-            tax_rate = 0.0
             profit_percentage = 0.0
-            if required_withdrawal_net > 0 and portfolio_value > 0:
+            
+            if portfolio_value > 0:
                 profit_percentage = max(0, (portfolio_value - total_principal) / portfolio_value)
-                active_tax_res = tax_res
-                for reloc in params.get('relocations', []):
-                    reloc_abs_month = (reloc['year'] * 12) + reloc['month'] - 1
-                    if current_absolute_month >= reloc_abs_month:
-                        active_tax_res = reloc['new_regime']
                 
-                tax_config = self.taxes["capital_gains"][active_tax_res]
-                if tax_config["type"] == "flat":
-                    tax_rate = tax_config["rate"]
-                elif tax_config["type"] == "tiered":
-                    tax_rate = tax_config["brackets"][-1]["rate"] 
-                    for bracket in tax_config["brackets"]:
-                        if bracket["limit"] is None or current_year_gains_withdrawn < bracket["limit"]:
-                            tax_rate = bracket["rate"]
-                            break
-                
-                gross_withdrawal = required_withdrawal_net / (1 - (profit_percentage * tax_rate))
-                
+            active_tax_res = tax_res
+            for reloc in params.get('relocations', []):
+                reloc_abs_month = (reloc['year'] * 12) + reloc['month'] - 1
+                if current_absolute_month >= reloc_abs_month:
+                    active_tax_res = reloc['new_regime']
+                    
+            tax_config = self.taxes["capital_gains"][active_tax_res]
+            
+            # Establish the baseline marginal rate strictly for UI tracking, not math
+            if tax_config["type"] == "flat":
+                tax_rate = tax_config["rate"]
+            else:
+                tax_rate = tax_config["brackets"][-1]["rate"] 
+                for bracket in tax_config["brackets"]:
+                    if bracket["limit"] is None or current_year_gains_withdrawn < bracket["limit"]:
+                        tax_rate = bracket["rate"]
+                        break
+
+            # Now execute the standard withdrawal ONLY if we need the cash
+            if required_withdrawal_net > 0 and portfolio_value > 0:
+                gross_withdrawal = self._calculate_gross_withdrawal(
+                    required_withdrawal_net, 
+                    profit_percentage, 
+                    tax_config, 
+                    current_year_gains_withdrawn
+                )
+                              
                 # --- EMERGENCY OVERRIDE PART 1: Partial Shortfall ---
                 if gross_withdrawal > portfolio_value:
                     gross_withdrawal = portfolio_value 
-                    actual_net_received = gross_withdrawal * (1 - (profit_percentage * tax_rate))
+                    # THE FIX: Calculate true net yield using progressive forward-math
+                    actual_net_received = self._calculate_net_from_gross(
+                        gross_withdrawal, 
+                        profit_percentage, 
+                        tax_config, 
+                        current_year_gains_withdrawn
+                    )
                     shortfall = required_withdrawal_net - actual_net_received
                     
-                    # Portfolio couldn't cover it. Force the shortfall onto the buffer.
                     if shortfall > 0 and current_buffer > 0:
                         emergency_pull = min(shortfall, current_buffer)
                         current_buffer -= emergency_pull
@@ -462,31 +533,23 @@ class PortfolioSimulator:
 
             # --- EMERGENCY OVERRIDE PART 2: Portfolio Empty ---
             elif required_withdrawal_net > 0 and portfolio_value <= 0 and current_buffer > 0:
-                # The portfolio is completely empty. We MUST drain the buffer to survive,
-                # ignoring all strategy threshold rules.
                 emergency_pull = min(required_withdrawal_net, current_buffer)
                 current_buffer -= emergency_pull
                 amount_from_buffer += emergency_pull
                 required_withdrawal_net -= emergency_pull
             # --------------------------------------------------
 
-            # --- NEW: Prevent replenishment during the Glidepath phase ---
-
             gross_withdrawal_for_buffer = 0.0
             allow_replenish = True
             if use_equity_glidepath and month <= glidepath_months:
                 allow_replenish = False
 
-            # --- THE FIX: The Dead-Cat Bounce Protector ---
+            # --- The Dead-Cat Bounce Protector ---
             if params.get('use_proportional_withdrawal', False):
-                # Never sell equities to refill the cash bucket if we are in a macro drawdown.
-                # Equities must be allowed to recover their intrinsic value first.
-                if synthetic_index < current_slow_sma or synthetic_index < current_sma:
-                    allow_replenish = False   
+                if synthetic_index < current_slow_sma or synthetic_index < current_sma or current_sma < current_slow_sma:
+                    allow_replenish = False
             
-            # --- NEW: The Seed Corn Protector (Equity Mass Floor) ---
-            # Never harvest gains to fill cash if the equity engine has lost its critical mass.
-            # Equities must make up at least 20% of the total net worth, otherwise they are strictly protected.
+            # --- The Seed Corn Protector (Equity Mass Floor) ---
             total_assets = portfolio_value + current_buffer
             if total_assets > 0:
                 equity_ratio = portfolio_value / total_assets
@@ -502,21 +565,23 @@ class PortfolioSimulator:
                 # Option 4: Only refill if the index is sitting at an all-time historical peak
                 if use_high_water_mark:
                     if synthetic_index >= high_water_mark_index:  
-                        # Harvest ONLY the gains generated this month to organically fill the bucket.
-                        # Do not cannibalize the principal to force the buffer to target.
                         gains_this_month = portfolio_value * growth_rate if growth_rate > 0 else 0.0
-                        net_gains = gains_this_month * (1 - (profit_percentage * tax_rate))
+                        # THE FIX: Exact net yield of this month's gains
+                        net_gains = self._calculate_net_from_gross(
+                            gains_this_month, profit_percentage, tax_config, current_year_gains_withdrawn
+                        )
                         amount_to_add = min(target_buffer - current_buffer, net_gains)
                         
                 # Standard Logic: Refill if this month's growth beat the threshold
                 elif growth_rate > monthly_replenish_threshold:
                     gross_excess = portfolio_value * (growth_rate - monthly_replenish_threshold)
-                    net_excess = gross_excess * (1 - (profit_percentage * tax_rate))
+                    # THE FIX: Exact net yield of the excess growth
+                    net_excess = self._calculate_net_from_gross(
+                        gross_excess, profit_percentage, tax_config, current_year_gains_withdrawn
+                    )
                     amount_to_add = min(target_buffer - current_buffer, net_excess)
                 
-                # --- NEW: The Throttle Valve ---
-                # Never harvest more than 3 months of baseline expenses in a single month.
-                # This prevents violent volatility from draining the compounding engine.
+                # --- The Throttle Valve ---
                 throttle_multiplier = params.get('buffer_refill_throttle_months', 3)
                 max_safe_refill = current_monthly_spending * throttle_multiplier
                 if amount_to_add > max_safe_refill:
@@ -525,10 +590,21 @@ class PortfolioSimulator:
 
                 # Execute the transfer
                 if amount_to_add > 0:
-                    gross_withdrawal_for_buffer = amount_to_add / (1 - (profit_percentage * tax_rate))
+                    gains_base_for_buffer = current_year_gains_withdrawn + (gross_withdrawal * profit_percentage)
+                    
+                    gross_withdrawal_for_buffer = self._calculate_gross_withdrawal(
+                        amount_to_add, 
+                        profit_percentage, 
+                        tax_config, 
+                        gains_base_for_buffer
+                    )
+                    
                     if gross_withdrawal_for_buffer > portfolio_value:
                         gross_withdrawal_for_buffer = portfolio_value
-                        amount_to_add = gross_withdrawal_for_buffer * (1 - (profit_percentage * tax_rate))
+                        # THE FIX: Actual net added based on progressive math
+                        amount_to_add = self._calculate_net_from_gross(
+                            gross_withdrawal_for_buffer, profit_percentage, tax_config, gains_base_for_buffer
+                        )
                     
                     portfolio_value -= gross_withdrawal_for_buffer
                     principal_withdrawal = gross_withdrawal_for_buffer * (1 - profit_percentage)
@@ -536,24 +612,20 @@ class PortfolioSimulator:
                     current_year_gains_withdrawn += (gross_withdrawal_for_buffer - principal_withdrawal)
                     current_buffer += amount_to_add
                     
-                    # Reset the peak so we don't continuously harvest a sideways market
-                    #if use_high_water_mark:
-                    #    high_water_mark_index = synthetic_index
-
-            # Ensure principal tracking doesn't drift negative from floating point math
             total_principal = max(0.0, total_principal)
 
             current_monthly_spending *= (1 + monthly_inflation_rate)
             if params['pensions_inflation_adjusted']:
                 current_pension_values = [v * (1 + monthly_inflation_rate) for v in current_pension_values]
 
-            # --- NEW: ACTUAL CONSUMPTION TRACKING ---
+            # --- ACTUAL CONSUMPTION TRACKING ---
             if surplus > 0:
-                # Target met entirely by pension. Rest was reinvested.
                 actual_spend = effective_monthly_spending
             else:
-                # Target exceeded pension. Spend is pension + buffer used + net cash pulled from equities.
-                net_investment_withdrawal = gross_withdrawal * (1 - (profit_percentage * tax_rate))
+                # Use progressive math for accurate spend reporting
+                net_investment_withdrawal = self._calculate_net_from_gross(
+                    gross_withdrawal, profit_percentage, tax_config, current_year_gains_withdrawn - (gross_withdrawal * profit_percentage)
+                )
                 actual_spend = total_net_pension_this_month + amount_from_buffer + net_investment_withdrawal
 
             total_assets = portfolio_value + current_buffer
@@ -569,8 +641,6 @@ class PortfolioSimulator:
                 "austerity": is_austerity
             }
             
-            # (The "if total_assets <= 0: break" block has been completely removed)
-
         return results
 
     def run_simulation(self, params):
@@ -593,10 +663,7 @@ class PortfolioSimulator:
                 if model == 'linear':
                     rates.append((1 + params['linear_rate'])**(1/12) - 1)
                 elif model.startswith('historical_'):
-                    # Strip the first 11 characters ('historical_') to get the exact JSON key
                     index_key = model[11:] 
-                    
-                    # Look up the key directly in the loaded indices dictionary
                     history = [row for row in self.indices.get(index_key, []) if params['historical_start_year'] <= row['year'] <= params['historical_end_year']]
                     if not history:
                         rates.append(0.0)
@@ -613,29 +680,23 @@ class PortfolioSimulator:
                     
                     engine_choice = params.get('stochastic_engine', 'gbm')
                     annual_rate = params.get('linear_rate', 0.07)
-                    
-                    # Convert the UI's monthly volatility to the annualized metric the math expects
                     annual_vol = params.get('stochastic_volatility', 0.13)
 
-                    # 1. Run distinct 50-year timelines based on the chosen physics engine
                     for _ in range(iterations):
                         if engine_choice == 'heston':
                             stoch_rates = self._generate_heston_returns(annual_rate, annual_vol, total_months)
                         else:
                             stoch_rates = self._generate_gbm_returns(annual_rate, annual_vol, total_months)
                             
-                        # No more artificial clamping! The math runs pure.
                         run_result = self._run_single_timeline(params, stoch_rates, tax_res, start_year, start_month, total_months)
                         all_runs.append(run_result)
                     
                     all_runs.sort(key=lambda run: run[total_months]['value'])
 
-                    # Extract the exact, unbroken mathematical timelines for the percentiles
                     p10_run = all_runs[int(iterations * 0.10)]
                     p50_run = all_runs[int(iterations * 0.50)]
                     p90_run = all_runs[int(iterations * 0.90)]
 
-                    # Now map those pure paths into the merged results
                     for month in range(1, total_months + 1):
                         for prefix, data in [("stochastic_10", p10_run[month]), 
                                              ("stochastic_50", p50_run[month]), 
@@ -649,7 +710,6 @@ class PortfolioSimulator:
                             merged_results[month][f"{prefix}_{tax_res}_spend"] = data.get("spend", 0.0)
                             merged_results[month][f"{prefix}_{tax_res}_austerity"] = data.get("austerity", False)
                 else:
-                    # Execute single-path models (Linear, Historical, GBM, Heston)
                     rates = []
                     
                     if model == 'linear':
@@ -659,23 +719,20 @@ class PortfolioSimulator:
                     elif model.startswith('historical'):
                         index_name = model.replace('historical_', '')
                         historical_data = self.indices.get(index_name, [])
-                        # (Assume your existing historical extraction logic goes here to populate 'rates')
-                        rates = self._extract_historical_rates(historical_data, params, total_months) # Keep whatever logic you currently have here
+                        rates = self._extract_historical_rates(historical_data, params, total_months) 
                         
-                    # --- NEW: QUANTITATIVE PATHS ---
                     elif model == 'stochastic_gbm':
                         annual_rate = params.get('linear_rate', 0.07)
-                        annual_vol = params.get('stochastic_volatility', 0.13) # <-- Updated
+                        annual_vol = params.get('stochastic_volatility', 0.13) 
                         rates = self._generate_gbm_returns(annual_rate, annual_vol, total_months)
                         
                     elif model == 'stochastic_heston':
                         annual_rate = params.get('linear_rate', 0.07)
-                        annual_vol = params.get('stochastic_volatility', 0.225) # <-- Updated
+                        annual_vol = params.get('stochastic_volatility', 0.225) 
                         rates = self._generate_heston_returns(annual_rate, annual_vol, total_months)
                     else:
-                        rates = [0.0] * total_months # Fallback safety
+                        rates = [0.0] * total_months 
 
-                    # Feed the generated rates into the simulator
                     single_run = self._run_single_timeline(params, rates, tax_res, start_year, start_month, total_months)
                     
                     for month in range(1, total_months + 1):
