@@ -93,9 +93,9 @@ export default function App() {
   const defaultStartYear = currentDate.getMonth() === 11 ? currentYear + 1 : currentYear;
   
   const [dynamicModels, setDynamicModels] = useState({
-    uiModels: { linear: 'Linear Average', stochastic: 'Stochastic (Monte Carlo)', historical_SP500: 'S&P 500', historical_EUROSTOXX50: 'EURO STOXX' },
-    displayNames: { linear: 'Linear Average', historical_SP500: 'S&P 500', historical_EUROSTOXX50: 'EURO STOXX', stochastic_90: 'Stochastic (Best 10%)', stochastic_50: 'Stochastic (Median)', stochastic_10: 'Stochastic (Worst 10%)' },
-    displayColors: { linear: '#2563eb', historical_SP500: '#dc2626', historical_EUROSTOXX50: '#9333ea', stochastic_90: '#4ade80', stochastic_50: '#16a34a', stochastic_10: '#064e3b' },
+    uiModels: { linear: 'Linear Average', stochastic: 'Stochastic (Monte Carlo)' },
+    displayNames: { linear: 'Linear Average', stochastic_90: 'Stochastic (Best 10%)', stochastic_50: 'Stochastic (Median)', stochastic_10: 'Stochastic (Worst 10%)' },
+    displayColors: { linear: '#2563eb', stochastic_90: '#4ade80', stochastic_50: '#16a34a', stochastic_10: '#064e3b' },
     capGainsRegimes: ['Finland'],
     pensionRegimes: ['Finland'],
     taxStyles: { 'Finland': undefined }
@@ -762,7 +762,9 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <h4 style={{ margin: '0 0 4px 0', color: '#0f172a' }}>🎯 Minimum Required Capital Calculator</h4>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>Calculates the exact starting mass needed to survive the timeline while staying above your €{params.poverty_threshold}/mo poverty floor.</p>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>
+                    Calculates the exact starting mass needed to survive the timeline while staying above your €{params.poverty_threshold}/mo poverty floor, based on your current configuration on the left.
+                  </p>
                 </div>
                 <button 
                   onClick={handleFindMinimumCapital} 

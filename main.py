@@ -252,13 +252,20 @@ def find_minimum_capital(params: dict = Body(...)):
                 elif params.get('use_proportional_attenuator'): spend_proto = "Elastic Dimmer"
                 elif params.get('enable_low_season_spend'): spend_proto = "Austerity Cut"
                 
-                buf_proto = "None"
+                # --- NEW: Stack all active buffer protocols ---
+                buf_proto_list = []
                 if params.get('use_cash_buffer'):
-                    if params.get('use_proportional_withdrawal'): buf_proto = "5. Proportional Routing"
-                    elif params.get('use_high_water_mark'): buf_proto = "4. High-Water Mark"
-                    elif params.get('use_equity_glidepath'): buf_proto = "2. Equity Glidepath"
-                    elif params.get('use_trend_guardrail'): buf_proto = "1. Trend Guardrail"
-                    else: buf_proto = "0. Volatility Fallback"
+                    if params.get('use_proportional_withdrawal'): buf_proto_list.append("5. Proportional Withdrawal")
+                    elif params.get('use_high_water_mark'): buf_proto_list.append("4. High-Water Mark")
+                    elif params.get('use_equity_glidepath'): buf_proto_list.append("2. Equity Glidepath")
+                    elif params.get('use_trend_guardrail'): buf_proto_list.append("1. Trend Guardrail")
+                    else: buf_proto_list.append("0. Volatility Fallback")
+                    
+                    # Add modifiers if active
+                    if params.get('use_dynamic_buffer'):
+                        buf_proto_list.append("3. Dynamic Sizing")
+                        
+                buf_proto = " + ".join(buf_proto_list) if buf_proto_list else "None"
                         
                 results.append({
                     "model": model,
