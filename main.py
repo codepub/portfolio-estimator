@@ -112,8 +112,11 @@ def find_minimum_capital(params: dict = Body(...)):
     """
     Inverts the simulation: Finds the absolute minimum starting capital required 
     to survive the timeline while maintaining the Poverty Disqualifier floor.
+    Executes timelines concurrently using a multiprocessing pool.
     """
     import random
+    import copy
+    import concurrent.futures
     
     total_months = (params['simulation_end_year'] - params['simulation_start_year']) * 12
     iterations = params.get('stochastic_iterations', 100)
@@ -130,8 +133,7 @@ def find_minimum_capital(params: dict = Body(...)):
             frozen_timelines['stochastic'] = [simulator._generate_gbm_returns(0.07, vol, total_months) for _ in range(iterations)]
     
     results = []
-
-    # --- NEW: Expand stochastic into its three distinct targets ---
+    
     search_models = []
     for m in params.get('growth_models', ['linear']):
         if m == 'stochastic':
@@ -139,109 +141,135 @@ def find_minimum_capital(params: dict = Body(...)):
         else:
             search_models.append(m)
 
-    # 2. Iterate through every active Model and Tax combination
-    for model in search_models:
-        for tax in params.get('tax_residencies', ['Finland']):
-            
-            low = 100000.0
-            high = 10000000.0 # 10 Million upper bound
-            tolerance = 25000.0
-            best_safe_capital = high
-            best_p10_spends = []
-            target_spend = params['yearly_spending']
-            
-            while (high - low) > tolerance:
-                test_cap = (low + high) / 2.0
+    # 2. Open the CPU Pool ONCE for the entire request
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        
+        for model in search_models:
+            for tax in params.get('tax_residencies', ['Finland']):
                 
-                test_params = copy.deepcopy(params)
-                if test_params.get('use_cash_buffer'):
-                    orig_total = params['initial_investment'] + params.get('buffer_current_size', 0)
-                    buf_ratio = params.get('buffer_current_size', 0) / orig_total if orig_total > 0 else 0.15
-                    test_params['initial_investment'] = test_cap * (1 - buf_ratio)
-                    test_params['buffer_current_size'] = test_cap * buf_ratio
-                else:
-                    test_params['initial_investment'] = test_cap
-                    test_params['buffer_current_size'] = 0.0
-
-                # Route to the correct physics arrays
-                if model.startswith('Stochastic'):
-                    timelines_to_test = frozen_timelines.get('stochastic', [])
-                elif model == 'linear':
-                    base_monthly_rate = (1 + test_params.get('linear_rate', 0.07))**(1/12) - 1
-                    timelines_to_test = [[base_monthly_rate] * total_months]
-                elif model.startswith('historical_'):
-                    index_name = model.replace('historical_', '')
-                    historical_data = simulator.indices.get(index_name, [])
-                    timelines_to_test = [simulator._extract_historical_rates(historical_data, test_params, total_months)]
-                else:
-                    timelines_to_test = [[0.0] * total_months]
-
-                final_wealths = []
+                low = 100000.0
+                high = 10000000.0 # 10 Million upper bound
+                tolerance = 25000.0
+                best_safe_capital = high
+                best_p10_spends = []
+                target_spend = params['yearly_spending']
                 
-                for rates in timelines_to_test:
-                    res = simulator._run_single_timeline(test_params, rates, tax, test_params['simulation_start_year'], test_params['simulation_start_month'], total_months)
+                while (high - low) > tolerance:
+                    test_cap = (low + high) / 2.0
                     
-                    annual_real_spends = []
-                    for year in range(1, (total_months // 12) + 1):
-                        start_m = (year - 1) * 12 + 1
-                        end_m = year * 12
-                        discount = (1 + test_params['inflation_percentage']) ** year
-                        real_spend = sum(res[m]['spend'] for m in range(start_m, end_m + 1)) / discount
-                        annual_real_spends.append(real_spend)
-                            
-                    final_wealths.append({
-                        'wealth': res[total_months]['value'], 
-                        'min_spend': min(annual_real_spends),
-                        'spends': annual_real_spends
-                    })
-                
-                final_wealths.sort(key=lambda x: x['wealth'])
-                
-                # --- NEW: Target the specific percentile requested by the loop ---
-                if model == 'Stochastic (Worst 10%)': eval_idx = int(iterations * 0.10)
-                elif model == 'Stochastic (Median)': eval_idx = int(iterations * 0.50)
-                elif model == 'Stochastic (Best 10%)': eval_idx = int(iterations * 0.90)
-                else: eval_idx = 0 
-                
-                outcome = final_wealths[eval_idx]
-                
-                if outcome['wealth'] > 0 and outcome['min_spend'] >= poverty_threshold_annual:
-                    best_safe_capital = test_cap
-                    best_p10_spends = outcome['spends'] 
-                    high = test_cap 
-                else:
-                    low = test_cap 
+                    # Setup the test payload
+                    test_params = copy.deepcopy(params)
+                    if test_params.get('use_cash_buffer'):
+                        orig_total = params['initial_investment'] + params.get('buffer_current_size', 0)
+                        buf_ratio = params.get('buffer_current_size', 0) / orig_total if orig_total > 0 else 0.15
+                        test_params['initial_investment'] = test_cap * (1 - buf_ratio)
+                        test_params['buffer_current_size'] = test_cap * buf_ratio
+                    else:
+                        test_params['initial_investment'] = test_cap
+                        test_params['buffer_current_size'] = 0.0
 
-            bins = {"95%+": 0, "80-94%": 0, "60-79%": 0, "<60%": 0}
-            if best_p10_spends:
-                for s in best_p10_spends:
-                    if s >= target_spend * 0.95: bins["95%+"] += 1  
-                    elif s >= target_spend * 0.80: bins["80-94%"] += 1
-                    elif s >= target_spend * 0.60: bins["60-79%"] += 1
-                    else: bins["<60%"] += 1
+                    # Route to the correct physics arrays
+                    if model.startswith('Stochastic'):
+                        timelines_to_test = frozen_timelines.get('stochastic', [])
+                    elif model == 'linear':
+                        base_monthly_rate = (1 + test_params.get('linear_rate', 0.07))**(1/12) - 1
+                        timelines_to_test = [[base_monthly_rate] * total_months]
+                    elif model.startswith('historical_'):
+                        index_name = model.replace('historical_', '')
+                        historical_data = simulator.indices.get(index_name, [])
+                        timelines_to_test = [simulator._extract_historical_rates(historical_data, test_params, total_months)]
+                    else:
+                        timelines_to_test = [[0.0] * total_months]
 
-            spend_proto = "Constant (No Guardrails)"
-            if params.get('use_guyton_klinger'): spend_proto = "Guyton-Klinger"
-            elif params.get('use_proportional_attenuator'): spend_proto = "Elastic Dimmer"
-            elif params.get('enable_low_season_spend'): spend_proto = "Austerity Cut"
-            
-            buf_proto = "None"
-            if params.get('use_cash_buffer'):
-                if params.get('use_proportional_withdrawal'): buf_proto = "5. Proportional Routing"
-                elif params.get('use_high_water_mark'): buf_proto = "4. High-Water Mark"
-                elif params.get('use_equity_glidepath'): buf_proto = "2. Equity Glidepath"
-                elif params.get('use_trend_guardrail'): buf_proto = "1. Trend Guardrail"
-                else: buf_proto = "0. Volatility Fallback"
+                    final_wealths = []
+                    monthly_inflation_rate = (1 + test_params['inflation_percentage']) ** (1/12) - 1
                     
-            results.append({
-                "model": model, # This will now output the clean, formatted percentile string
-                "tax": tax,
-                "required_capital": best_safe_capital,
-                "spending_protocol": spend_proto,
-                "buffer_protocol": buf_proto,
-                "bins": bins
-            })
-            
+                    # --- NEW: Launch all timelines simultaneously into the worker pool ---
+                    futures = [
+                        executor.submit(
+                            simulator._run_single_timeline, 
+                            test_params, rates, tax, 
+                            test_params['simulation_start_year'], test_params['simulation_start_month'], 
+                            total_months
+                        ) for rates in timelines_to_test
+                    ]
+                    
+                    # --- NEW: Collect them as they finish crunching ---
+                    for future in concurrent.futures.as_completed(futures):
+                        res = future.result()
+                        
+                        annual_real_spends = []
+                        for year in range(1, (total_months // 12) + 1):
+                            start_m = (year - 1) * 12 + 1
+                            end_m = year * 12
+                            # Compact list comprehension for the pure monthly discounting
+                            real_annual_sum = sum(res[m]['spend'] / ((1 + monthly_inflation_rate) ** (m - 1)) for m in range(start_m, end_m + 1))
+                            annual_real_spends.append(real_annual_sum)
+                                
+                        final_wealths.append({
+                            'wealth': res[total_months]['value'], 
+                            'min_spend': min(annual_real_spends),
+                            'spends': annual_real_spends
+                        })
+                    
+                    final_wealths.sort(key=lambda x: x['wealth'])
+                    
+                    # Target the specific percentile
+                    if model == 'Stochastic (Worst 10%)': eval_idx = int(iterations * 0.10)
+                    elif model == 'Stochastic (Median)': eval_idx = int(iterations * 0.50)
+                    elif model == 'Stochastic (Best 10%)': eval_idx = int(iterations * 0.90)
+                    else: eval_idx = 0 
+                    
+                    outcome = final_wealths[eval_idx]
+                    
+                    if outcome['wealth'] > 0 and outcome['min_spend'] >= poverty_threshold_annual:
+                        best_safe_capital = test_cap
+                        best_p10_spends = outcome['spends'] 
+                        high = test_cap 
+                    else:
+                        low = test_cap 
+
+                # Calculate Psychological Bins & Deepest Cut
+                bins = {"100%": 0, "95-99%": 0, "85-94%": 0, "<85%": 0}
+                max_cut_pct = 0.0
+                
+                if best_p10_spends:
+                    for s in best_p10_spends:
+                        if s < target_spend * 0.995: 
+                            cut_depth = (target_spend - s) / target_spend
+                            if cut_depth > max_cut_pct:
+                                max_cut_pct = cut_depth
+
+                        if s >= target_spend * 0.995: bins["100%"] += 1  
+                        elif s >= target_spend * 0.95: bins["95-99%"] += 1
+                        elif s >= target_spend * 0.85: bins["85-94%"] += 1
+                        else: bins["<85%"] += 1
+
+                deepest_cut_str = f"-{max_cut_pct * 100:.1f}%" if max_cut_pct > 0 else "0.0%"
+
+                spend_proto = "Constant (No Guardrails)"
+                if params.get('use_guyton_klinger'): spend_proto = "Guyton-Klinger"
+                elif params.get('use_proportional_attenuator'): spend_proto = "Elastic Dimmer"
+                elif params.get('enable_low_season_spend'): spend_proto = "Austerity Cut"
+                
+                buf_proto = "None"
+                if params.get('use_cash_buffer'):
+                    if params.get('use_proportional_withdrawal'): buf_proto = "5. Proportional Routing"
+                    elif params.get('use_high_water_mark'): buf_proto = "4. High-Water Mark"
+                    elif params.get('use_equity_glidepath'): buf_proto = "2. Equity Glidepath"
+                    elif params.get('use_trend_guardrail'): buf_proto = "1. Trend Guardrail"
+                    else: buf_proto = "0. Volatility Fallback"
+                        
+                results.append({
+                    "model": model,
+                    "tax": tax,
+                    "required_capital": best_safe_capital,
+                    "spending_protocol": spend_proto,
+                    "buffer_protocol": buf_proto,
+                    "bins": bins,
+                    "deepest_cut": deepest_cut_str
+                })
+                
     return {"status": "success", "data": results}
 
 @app.get("/config")

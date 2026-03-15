@@ -345,7 +345,7 @@ export default function App() {
 
     const handleEngineChange = (e) => {
       const engine = e.target.value;
-      const defaultVol = engine === 'heston' ? 0.225 : 0.13;
+      const defaultVol = engine === 'heston' ? 0.16 : 0.16;
       setParams(prev => ({ ...prev, stochastic_engine: engine, stochastic_volatility: defaultVol }));
     };
     const handleArrayToggle = (key, id) => { setParams(prev => { const isSelected = prev[key].includes(id); const newList = isSelected ? prev[key].filter(i => i !== id) : [...prev[key], id]; return { ...prev, [key]: newList.length ? newList : [id] }; }); };
@@ -776,16 +776,17 @@ export default function App() {
               {targetResults && (
                 <div style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                   <thead style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
+                    <thead style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
                       <tr>
                         <th style={{ padding: '10px 12px' }}>Growth Model</th>
                         <th style={{ padding: '10px 12px' }}>Tax</th>
                         <th style={{ padding: '10px 12px' }}>Active Buffer Protocol</th>
                         <th style={{ padding: '10px 12px' }}>Active Spending Rule</th>
-                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>95%+ Target</th>
-                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>80-94% Target</th>
-                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>60-79% Target</th>
-                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>&lt;60% Target</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>100% Full</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>95-99% (Micro)</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>85-94% (Noticeable)</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>&lt;85% (Deep)</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'center', color: '#9f1239' }}>Deepest Cut</th>
                         <th style={{ padding: '10px 12px', textAlign: 'right' }}>Min Starting Capital</th>
                       </tr>
                     </thead>
@@ -796,10 +797,11 @@ export default function App() {
                           <td style={{ padding: '10px 12px' }}>{res.tax.replace(/_/g, ' ')}</td>
                           <td style={{ padding: '10px 12px', color: '#b45309' }}>{res.buffer_protocol}</td>
                           <td style={{ padding: '10px 12px', color: '#4338ca' }}>{res.spending_protocol}</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>{res.bins["95%+"]} yrs</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'center', color: '#65a30d' }}>{res.bins["80-94%"]} yrs</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'center', color: '#d97706' }}>{res.bins["60-79%"]} yrs</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'center', color: '#dc2626' }}>{res.bins["<60%"]} yrs</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>{res.bins["100%"]} yrs</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', color: '#84cc16' }}>{res.bins["95-99%"]} yrs</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', color: '#f59e0b' }}>{res.bins["85-94%"]} yrs</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', color: '#dc2626' }}>{res.bins["<85%"]} yrs</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#9f1239' }}>{res.deepest_cut}</td>
                           <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 'bold', color: '#16a34a', fontSize: '14px' }}>
                             {new Intl.NumberFormat('fi-FI', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(res.required_capital)}
                           </td>
