@@ -18,9 +18,9 @@
       "description": "Standard 26% capital gains tax. Wealth tax ignored per requirements.",
       "rate": 0.26
     },
-    "Spain": {
+    "Spain_Madrid_Andalusia": {
       "type": "tiered",
-      "description": "Progressive savings tax rates (19% to 28%).",
+      "description": "Progressive savings tax rates (19% to 28%). Assumes residency in Madrid or Andalusia to bypass the Spanish Wealth Tax.",
       "brackets": [
         { "limit": 6000, "rate": 0.19 },
         { "limit": 50000, "rate": 0.21 },
@@ -36,19 +36,19 @@
     },
     "Czech_Republic": {
       "type": "flat",
-      "description": "0% if held for over 3 years.",
+      "description": "0% if held for over 3 years (Time Test). Otherwise 15%. Assumed long-term hold.",
       "rate": 0.00
     },
     "Bulgaria": {
       "type": "flat",
-      "description": "Flat 10% income/capital gains tax.",
+      "description": "Flat 10% income/capital gains tax. Note: Sales of UCITS ETFs on EU regulated markets are technically 0%.",
       "rate": 0.10
     }
   },
   "pension_income": {
     "Finland": {
       "type": "progressive_estimate",
-      "description": "Estimated progressive tax rate for pension income in Finland.",
+      "description": "Estimated progressive tax rate for pension income (State + Municipal + YLE + Health).",
       "brackets": [
         { "limit": 20000, "rate": 0.08 },
         { "limit": 30000, "rate": 0.17 },
@@ -59,15 +59,55 @@
     },
     "Italy_7_Percent": {
       "type": "flat",
+      "description": "Flat 7% applies to foreign pensions in designated southern municipalities.",
       "rate": 0.07
     },
     "Italy_General": {
       "type": "tiered",
+      "description": "Updated 2024 IRPEF progressive brackets.",
       "brackets": [
-        {"limit": 15000, "rate": 0.23},
-        {"limit": 28000, "rate": 0.25},
-        {"limit": null, "rate": 0.35}
+        { "limit": 28000, "rate": 0.23 },
+        { "limit": 50000, "rate": 0.35 },
+        { "limit": null, "rate": 0.43 }
       ]
+    },
+    "Spain_Madrid_Andalusia": {
+      "type": "tiered",
+      "description": "General progressive income tax (IRPF). Combined State + approximate Madrid regional rates.",
+      "brackets": [
+        { "limit": 12450, "rate": 0.185 },
+        { "limit": 20200, "rate": 0.235 },
+        { "limit": 35200, "rate": 0.283 },
+        { "limit": 60000, "rate": 0.364 },
+        { "limit": 300000, "rate": 0.445 },
+        { "limit": null, "rate": 0.465 }
+      ]
+    },
+    "Portugal_General": {
+      "type": "tiered",
+      "description": "Standard Portuguese IRS progressive brackets for pensions (Non-NHR).",
+      "brackets": [
+        { "limit": 7703, "rate": 0.13 },
+        { "limit": 11623, "rate": 0.21 },
+        { "limit": 16472, "rate": 0.265 },
+        { "limit": 21321, "rate": 0.285 },
+        { "limit": 27146, "rate": 0.35 },
+        { "limit": 39791, "rate": 0.37 },
+        { "limit": null, "rate": 0.45 }
+      ]
+    },
+    "Czech_Republic": {
+      "type": "tiered",
+      "description": "Pensions are tax-exempt up to 36x the minimum wage (approx €28k). Excess taxed at flat 15%.",
+      "brackets": [
+        { "limit": 28000, "rate": 0.00 },
+        { "limit": null, "rate": 0.15 }
+      ]
+    },
+    "Bulgaria": {
+      "type": "flat",
+      "description": "Flat 10% income tax applies to pensions.",
+      "rate": 0.10
     }
   }
 }
