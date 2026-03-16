@@ -209,9 +209,8 @@ class PortfolioSimulator:
         xi = 0.4
         rho = -0.7
         
-        # --- NEW: Intrinsic Valuation Anchor ---
-        # Represents the macroeconomic gravity of the fundamental economy
-        reversion_strength = 0.05  # Determines how aggressively capital buys the dip
+        # Intrinsic Valuation Anchor
+        reversion_strength = 0.05
         simulated_index = 100.0
         trend_index = 100.0
         
@@ -225,7 +224,6 @@ class PortfolioSimulator:
             
             v_t_plus = max(v_t, 0.0)
             
-            # --- THE ANCHOR MATH ---
             # 1. Grow the theoretical economic baseline
             trend_index *= math.exp(base_mu * dt)
             
@@ -267,13 +265,14 @@ class PortfolioSimulator:
         use_trend_guardrail = params.get('use_trend_guardrail', False)
         use_dynamic_buffer = params.get('use_dynamic_buffer', False)
         use_proportional_withdrawal = params.get('use_proportional_withdrawal', False)
+        use_baseline_volatility = params.get('use_baseline_volatility', False)
         
         sma_window = int(params.get('trend_sma_months', 12))
         slow_sma_window = int(params.get('valuation_slow_sma_months', 60))
         
         use_high_water_mark = params.get('use_high_water_mark', False)
         
-        # --- OPTION 1: GUYTON-KLINGER STATE ---
+        # --- SPENDING OVERLAYS: GUYTON-KLINGER ---
         use_guyton_klinger = params.get('use_guyton_klinger', False)
         gk_upper_threshold = params.get('gk_upper_threshold', 0.20)
         gk_lower_threshold = params.get('gk_lower_threshold', 0.20)
@@ -289,7 +288,7 @@ class PortfolioSimulator:
         gk_spend_multiplier = 1.0
         # --------------------------------------
 
-        # --- THE FIX: MEMORY ALLOCATION ---
+        # --- MEMORY ALLOCATION ---
         requires_slow_sma = use_dynamic_buffer or use_proportional_withdrawal or params.get('use_proportional_attenuator', False)
         max_window = max(sma_window, slow_sma_window) if requires_slow_sma else sma_window
         index_history = [synthetic_index] * max_window
@@ -302,7 +301,7 @@ class PortfolioSimulator:
             if calendar_month == 1:
                 current_year_gains_withdrawn = 0
                 
-                # --- OPTION 1: GUYTON-KLINGER ANNUAL EVALUATION ---
+                # --- SPENDING OVERLAYS: GUYTON-KLINGER ANNUAL EVALUATION ---
                 if month > 1 and use_guyton_klinger:
                     current_assets_for_gk = portfolio_value + current_buffer
                     if current_assets_for_gk > 0:
@@ -331,12 +330,12 @@ class PortfolioSimulator:
             current_sma = sum(index_history[-sma_window:]) / sma_window
             current_slow_sma = sum(index_history[-slow_sma_window:]) / slow_sma_window
 
-            # Option 1: Trend Guardrail Evaluation
+            # PHASE 2 (Option 2): Trend Guardrail Evaluation
             is_macro_downtrend = False
             if use_trend_guardrail and synthetic_index < current_sma:
                 is_macro_downtrend = True
 
-            # Option 3: Dynamic Buffer Sizing & Buy-the-Dip Protocol
+            # PHASE 2 (Option 3): Dynamic Buffer Sizing & Buy-the-Dip Protocol
             target_buffer = current_monthly_spending * params.get('buffer_target_months', 36)
             
             if use_dynamic_buffer:
@@ -351,7 +350,7 @@ class PortfolioSimulator:
                     total_principal += excess_cash 
             # ------------------------------------------------
 
-            # Option 4: Track the All-Time High of the Market ---
+            # PHASE 2 (Option 4): Track the All-Time High of the Market
             if use_high_water_mark and synthetic_index > high_water_mark_index:
                 high_water_mark_index = synthetic_index
 
@@ -389,7 +388,7 @@ class PortfolioSimulator:
 
             effective_monthly_spending = current_monthly_spending * gk_spend_multiplier
             
-            # --- OPTION 3: THE PROPORTIONAL ATTENUATOR (ELASTIC DIMMER) ---
+            # --- SPENDING OVERLAYS: THE PROPORTIONAL ATTENUATOR (ELASTIC DIMMER) ---
             use_proportional_attenuator = params.get('use_proportional_attenuator', False)
             attenuator_max_cut = params.get('attenuator_max_cut', 0.50) 
             
@@ -415,13 +414,13 @@ class PortfolioSimulator:
             else:
                 required_withdrawal_net = abs(surplus)
 
-            # --- UPDATED: Buffer Routing Logic ---
+            # --- BUFFER ROUTING LOGIC (Withdrawal Order) ---
             amount_from_buffer = 0.0
             
             if params.get('use_cash_buffer', False):
                 is_in_glidepath = use_equity_glidepath and month <= glidepath_months
                 
-                # --- NEW: Global Seed Corn Protector (Withdrawal Override) ---
+                # --- Global Seed Corn Protector (Withdrawal Override) ---
                 is_critically_low_equities = False
                 total_assets_for_check = portfolio_value + current_buffer
                 if total_assets_for_check > 0:
@@ -430,50 +429,49 @@ class PortfolioSimulator:
                     if equity_ratio < critical_floor:
                         is_critically_low_equities = True
 
-                # Option 2: Equity Glidepath (Priority 1)
+                # Phase 1: Equity Glidepath
                 if is_in_glidepath:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
-                # Priority 2: Critical Mass Survival Floor
+                    
+                # Global Override Priority: Critical Mass Survival Floor
                 elif is_critically_low_equities:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
-                # Option 5 - 3-Regime Dual-Momentum
-                elif params.get('use_proportional_withdrawal', False):
                     
+                # Phase 2 (Option 5): Valuation-Based Proportional Withdrawal
+                elif use_proportional_withdrawal:
                     price_below_fast = synthetic_index < current_sma
                     price_below_slow = synthetic_index < current_slow_sma
                     momentum_broken = current_sma < current_slow_sma
                     
                     if price_below_fast:
                         buffer_draw_pct = 1.0
-                        
                     elif price_below_slow or momentum_broken:
                         valuation_ratio = current_sma / current_slow_sma if current_slow_sma > 0 else 1.0
                         drawdown = max(0.0, 1.0 - valuation_ratio)
                         buffer_draw_pct = min(1.0, drawdown * 2.0)
-                        
                     else:
                         buffer_draw_pct = 0.0
                         
                     desired_buffer_pull = required_withdrawal_net * buffer_draw_pct
                     amount_from_buffer = min(desired_buffer_pull, current_buffer)
 
-                # Option 4: High-Water Mark (Always pull from cash first)
+                # Phase 2 (Option 4): High-Water Mark 
                 elif use_high_water_mark:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
 
-                # Option 1: SMA Trend Guardrail (Priority 2)
+                # Phase 2 (Option 2): SMA Trend Guardrail 
                 elif use_trend_guardrail and is_macro_downtrend:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
                     
-                # Default Fallback: Short-term volatility threshold
-                elif growth_rate < monthly_deplete_threshold:
+                # Phase 2 (Option 1): Baseline Volatility Thresholds
+                elif use_baseline_volatility and growth_rate < monthly_deplete_threshold:
                     amount_from_buffer = min(required_withdrawal_net, current_buffer)
                     
                 current_buffer -= amount_from_buffer
                 required_withdrawal_net -= amount_from_buffer
             # ------------------------------------------------
 
-            # --- Hoist tax config outside the conditional block ---
+            # --- Tax Processing ---
             gross_withdrawal = 0.0
             profit_percentage = 0.0
             
@@ -498,7 +496,7 @@ class PortfolioSimulator:
                         tax_rate = bracket["rate"]
                         break
 
-            # Now execute the standard withdrawal ONLY if we need the cash
+            # Execute the standard withdrawal ONLY if we need the cash
             if required_withdrawal_net > 0 and portfolio_value > 0:
                 gross_withdrawal = self._calculate_gross_withdrawal(
                     required_withdrawal_net, 
@@ -510,7 +508,7 @@ class PortfolioSimulator:
                 # --- EMERGENCY OVERRIDE PART 1: Partial Shortfall ---
                 if gross_withdrawal > portfolio_value:
                     gross_withdrawal = portfolio_value 
-                    # THE FIX: Calculate true net yield using progressive forward-math
+                    # Calculate true net yield using progressive forward-math
                     actual_net_received = self._calculate_net_from_gross(
                         gross_withdrawal, 
                         profit_percentage, 
@@ -539,17 +537,18 @@ class PortfolioSimulator:
                 required_withdrawal_net -= emergency_pull
             # --------------------------------------------------
 
+            # --- BUFFER REPLENISH LOGIC ---
             gross_withdrawal_for_buffer = 0.0
             allow_replenish = True
             if use_equity_glidepath and month <= glidepath_months:
                 allow_replenish = False
 
-            # --- The Dead-Cat Bounce Protector ---
-            if params.get('use_proportional_withdrawal', False):
+            # Global Override: Dead-Cat Bounce Protector
+            if use_proportional_withdrawal:
                 if synthetic_index < current_slow_sma or synthetic_index < current_sma or current_sma < current_slow_sma:
                     allow_replenish = False
             
-            # --- The Seed Corn Protector (Equity Mass Floor) ---
+            # Global Override: Seed Corn Protector (Equity Mass Floor)
             total_assets = portfolio_value + current_buffer
             if total_assets > 0:
                 equity_ratio = portfolio_value / total_assets
@@ -562,20 +561,18 @@ class PortfolioSimulator:
                 
                 amount_to_add = 0.0
                 
-                # Option 4: Only refill if the index is sitting at an all-time historical peak
+                # Phase 2 (Option 4): Only refill if the index is sitting at an all-time historical peak
                 if use_high_water_mark:
                     if synthetic_index >= high_water_mark_index:  
                         gains_this_month = portfolio_value * growth_rate if growth_rate > 0 else 0.0
-                        # THE FIX: Exact net yield of this month's gains
                         net_gains = self._calculate_net_from_gross(
                             gains_this_month, profit_percentage, tax_config, current_year_gains_withdrawn
                         )
                         amount_to_add = min(target_buffer - current_buffer, net_gains)
                         
-                # Standard Logic: Refill if this month's growth beat the threshold
-                elif growth_rate > monthly_replenish_threshold:
+                # Phase 2 (Option 1): Refill if this month's growth beat the threshold
+                elif use_baseline_volatility and growth_rate > monthly_replenish_threshold:
                     gross_excess = portfolio_value * (growth_rate - monthly_replenish_threshold)
-                    # THE FIX: Exact net yield of the excess growth
                     net_excess = self._calculate_net_from_gross(
                         gross_excess, profit_percentage, tax_config, current_year_gains_withdrawn
                     )
@@ -601,7 +598,6 @@ class PortfolioSimulator:
                     
                     if gross_withdrawal_for_buffer > portfolio_value:
                         gross_withdrawal_for_buffer = portfolio_value
-                        # THE FIX: Actual net added based on progressive math
                         amount_to_add = self._calculate_net_from_gross(
                             gross_withdrawal_for_buffer, profit_percentage, tax_config, gains_base_for_buffer
                         )

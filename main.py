@@ -184,7 +184,7 @@ def find_minimum_capital(params: dict = Body(...)):
                     final_wealths = []
                     monthly_inflation_rate = (1 + test_params['inflation_percentage']) ** (1/12) - 1
                     
-                    # --- NEW: Launch all timelines simultaneously into the worker pool ---
+                    # Launch all timelines simultaneously into the worker pool
                     futures = [
                         executor.submit(
                             simulator._run_single_timeline, 
@@ -194,7 +194,7 @@ def find_minimum_capital(params: dict = Body(...)):
                         ) for rates in timelines_to_test
                     ]
                     
-                    # --- NEW: Collect them as they finish crunching ---
+                    # Collect them as they finish crunching
                     for future in concurrent.futures.as_completed(futures):
                         res = future.result()
                         
@@ -252,20 +252,34 @@ def find_minimum_capital(params: dict = Body(...)):
                 elif params.get('use_proportional_attenuator'): spend_proto = "Elastic Dimmer"
                 elif params.get('enable_low_season_spend'): spend_proto = "Austerity Cut"
                 
-                # --- NEW: Stack all active buffer protocols ---
-                buf_proto_list = []
+                # --- SYNCHRONIZED BUFFER PROTOCOL LABELS ---
+                buf_proto = "None"
                 if params.get('use_cash_buffer'):
-                    if params.get('use_proportional_withdrawal'): buf_proto_list.append("5. Proportional Withdrawal")
-                    elif params.get('use_high_water_mark'): buf_proto_list.append("4. High-Water Mark")
-                    elif params.get('use_equity_glidepath'): buf_proto_list.append("2. Equity Glidepath")
-                    elif params.get('use_trend_guardrail'): buf_proto_list.append("1. Trend Guardrail")
-                    else: buf_proto_list.append("0. Volatility Fallback")
+                    phase1 = "Phase 1: Glidepath" if params.get('use_equity_glidepath') else ""
                     
-                    # Add modifiers if active
-                    if params.get('use_dynamic_buffer'):
-                        buf_proto_list.append("3. Dynamic Sizing")
+                    phase2_components = []
+                    if params.get('use_proportional_withdrawal'):
+                        phase2_components.append("5. Proportional Withdrawal")
+                    elif params.get('use_high_water_mark'):
+                        phase2_components.append("4. High-Water Mark")
+                    elif params.get('use_baseline_volatility'):
+                        phase2_components.append("1. Baseline Volatility")
                         
-                buf_proto = " + ".join(buf_proto_list) if buf_proto_list else "None"
+                    if params.get('use_trend_guardrail'):
+                        phase2_components.append("2. SMA Guardrail")
+                    if params.get('use_dynamic_buffer'):
+                        phase2_components.append("3. Dynamic Sizing")
+                        
+                    phase2_str = " + ".join(phase2_components)
+                    
+                    if phase1 and phase2_str:
+                        buf_proto = f"{phase1} -> {phase2_str}"
+                    elif phase1:
+                        buf_proto = phase1
+                    elif phase2_str:
+                        buf_proto = phase2_str
+                    else:
+                        buf_proto = "Active (No Base Strategy)"
                         
                 results.append({
                     "model": model,
