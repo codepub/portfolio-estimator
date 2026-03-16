@@ -17,7 +17,7 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
             'initial_profit_percentage': 0.0,
             'yearly_spending': 12000.0, # Exactly €1,000 / month
             'pensions': [],
-            'pensions_inflation_adjusted': False, # <-- ADDED MISSING KEY
+            'pensions_inflation_adjusted': False, 
             'cash_events': [],
             'spending_events': [],
             'relocations': [],
@@ -29,6 +29,7 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
             'valuation_slow_sma_months': 4,   # Slow moving average (4 months)
             'equity_critical_mass_floor': 0.20,
             'buffer_replenishment_threshold': 0.05, 
+            'use_baseline_volatility': False,
             'use_proportional_withdrawal': False,
             'use_trend_guardrail': False,
             'use_equity_glidepath': False,
@@ -50,6 +51,7 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
         res_opt1 = self.simulator._run_single_timeline(params_opt1, controlled_rates, "Finland", 2026, 1, 4)
         month4_opt1 = res_opt1[4]
         
+        # Binary trend sees the short-term uptrend and immediately pulls 100% from equities
         self.assertEqual(month4_opt1['w_buf'], 0.0)
         self.assertAlmostEqual(month4_opt1['w_inv'], 1000.0, places=1)
 
@@ -60,8 +62,14 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
         res_opt5 = self.simulator._run_single_timeline(params_opt5, controlled_rates, "Finland", 2026, 1, 4)
         month4_opt5 = res_opt5[4]
         
-        self.assertTrue(0.0 < month4_opt5['w_buf'] < 1000.0)
-        self.assertAlmostEqual(month4_opt5['w_buf'], 33.81, places=1)
+        # Elastic trend sees it is still underwater (Slow SMA > Fast SMA) 
+        # and proportional splits the burden. It should draw from BOTH.
+        self.assertTrue(0.0 < month4_opt5['w_buf'] < 1000.0, "Option 5 failed to elastically draw from the buffer.")
+        self.assertTrue(0.0 < month4_opt5['w_inv'] < 1000.0, "Option 5 failed to elastically draw from equities.")
+        
+        # The exact math check: Based on the valuation ratio (SMA / Slow SMA), 
+        # we expect it to pull roughly 8% from the buffer (approx €80.62)
+        self.assertAlmostEqual(month4_opt5['w_buf'], 80.62, places=1)
 
     def test_hurricane_lock_equivalence(self):
         """
@@ -109,10 +117,6 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
         
         living_expenses_covered_by_equities = 1000.0 - res[4]['w_buf']
         self.assertAlmostEqual(res[4]['w_inv'], living_expenses_covered_by_equities, places=1)
-
-    # [Your test_swr_vs_advanced_guardrails_heston code stays right here]
-
-   
 
     def test_guyton_klinger_survival_mechanics(self):
         """
@@ -381,14 +385,7 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
         print("="*80 + "\n")
         
         # Explicit teardown to guarantee no memory leakage to other tests
-        del results
-        del params_buffer
-        del params_gk
-        del params_att
-        del rates
-        del res_buf
-        del res_gk
-        del res_att
+        del results, params_buffer, params_gk, params_att, rates, res_buf, res_gk, res_att
 
     def test_monte_carlo_p10_three_way_comparison_qol(self):
         """
