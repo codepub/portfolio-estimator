@@ -552,8 +552,8 @@ class PortfolioSimulator:
             total_assets = portfolio_value + current_buffer
             if total_assets > 0:
                 equity_ratio = portfolio_value / total_assets
-                replenish_threshold = params.get('replenish_threshold', 0.50)
-                if equity_ratio < replenish_threshold:
+                equity_replenish_threshold = params.get('equity replenish_threshold', 0.50)
+                if equity_ratio < equity_replenish_threshold:
                     allow_replenish = False
 
 

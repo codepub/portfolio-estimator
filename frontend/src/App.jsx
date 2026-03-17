@@ -2,21 +2,18 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { PlusCircle, Trash2, Eye, EyeOff } from 'lucide-react';
 
-// A helper function to keep the JSX clean
 const formatEur = (val) => new Intl.NumberFormat('fi-FI', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(val);
 
 const UnifiedTooltip = ({ active, payload, label, params }) => {
   if (active && payload && payload.length) {
     const monthData = payload[0].payload; 
     
-    // Calculate the actual calendar date based on the timeline index
     const absoluteMonth = parseInt(label);
-    const startYear = parseInt(params.start_year || new Date().getFullYear());
-    const startMonth = parseInt(params.start_month || 1);
+    const startYear = parseInt(params.simulation_start_year || new Date().getFullYear());
+    const startMonth = parseInt(params.simulation_start_month || 1);
     const currentYear = startYear + Math.floor((absoluteMonth + startMonth - 2) / 12);
     const calendarMonth = ((absoluteMonth + startMonth - 2) % 12) + 1;
 
-    // Filter to only loop through the main Portfolio Value lines, ignoring the secondary metric lines
     const mainLines = payload.filter(entry => entry.dataKey.includes('_value'));
 
     return (
@@ -27,11 +24,9 @@ const UnifiedTooltip = ({ active, payload, label, params }) => {
       {mainLines.map((entry, index) => {
           const baseKey = entry.dataKey.replace('_value', '');
           
-          // Find the universal market return key for this specific model
           const returnKey = Object.keys(monthData).find(k => k.endsWith('_return') && baseKey.startsWith(k.replace('_return', '') + '_'));
           const monthReturn = returnKey ? monthData[returnKey] : 0;
           
-          // Extract the unified variables
           const equitiesSold = monthData[`${baseKey}_w_inv`] !== undefined ? monthData[`${baseKey}_w_inv`] : (monthData.w_inv || 0);
           const bufferUsed = monthData[`${baseKey}_w_buf`] !== undefined ? monthData[`${baseKey}_w_buf`] : (monthData.w_buf || 0);
           const pension = monthData[`${baseKey}_w_pen`] !== undefined ? monthData[`${baseKey}_w_pen`] : (monthData.w_pen || 0);
@@ -42,7 +37,6 @@ const UnifiedTooltip = ({ active, payload, label, params }) => {
           return (
             <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: index === mainLines.length - 1 ? '0' : '16px', borderLeft: `4px solid ${entry.color}`, paddingLeft: '12px' }}>
               
-              {/* LEFT COLUMN: Identity & Core Assets */}
               <div style={{ minWidth: '180px' }}>
                 <div style={{ fontWeight: 'bold', color: entry.color, fontSize: '14px', marginBottom: '4px' }}>{entry.name.replace(' Value', '')}</div>
                 <div style={{ fontSize: '14px', color: '#1e293b' }}>Total Assets: <strong>{formatEur(entry.value)}</strong></div>
@@ -50,7 +44,6 @@ const UnifiedTooltip = ({ active, payload, label, params }) => {
                 <div style={{ fontSize: '13px', color: '#64748b' }}>Cash Buffer: {formatEur(bufferVal)}</div>
               </div>
 
-              {/* RIGHT COLUMN: Cashflow Breakdown (CSS Grid for alignment) */}
               <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px', rowGap: '4px', fontSize: '12px', color: '#475569', borderLeft: '1px dashed #cbd5e1', paddingLeft: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Month Return:</span> 
@@ -87,11 +80,6 @@ const UnifiedTooltip = ({ active, payload, label, params }) => {
 };
 
 export default function App() {
-  const currentDate = new Date();
-  const currentYear = currentDate.getFullYear();
-  const defaultStartMonth = currentDate.getMonth() === 11 ? 1 : currentDate.getMonth() + 2;
-  const defaultStartYear = currentDate.getMonth() === 11 ? currentYear + 1 : currentYear;
-  
   const [dynamicModels, setDynamicModels] = useState({
     uiModels: { linear: 'Linear Average', stochastic: 'Stochastic (Monte Carlo)' },
     displayNames: { linear: 'Linear Average', stochastic_90: 'Stochastic (Best 10%)', stochastic_50: 'Stochastic (Median)', stochastic_10: 'Stochastic (Worst 10%)' },
@@ -101,30 +89,8 @@ export default function App() {
     taxStyles: { 'Finland': undefined }
   });
 
-  const [params, setParams] = useState({
-    initial_investment: 1000000, initial_profit_percentage: 0.40, yearly_spending: 40000, inflation_percentage: 0.02,
-    enable_low_season_spend: false, low_season_cut_percentage: 0.10,
-    
-    // GUARDRAILS & ELASTIC DIMMER
-    use_guyton_klinger: false, gk_upper_threshold: 0.20, gk_lower_threshold: 0.20, gk_cut_rate: 0.10, gk_raise_rate: 0.10, gk_allow_raises: true,
-    use_proportional_attenuator: false, attenuator_max_cut: 0.50,
-    poverty_threshold: 600, 
-    
-    growth_models: ['linear'], tax_residencies: ['Finland'], linear_rate: 0.07, 
-    stochastic_iterations: 100, stochastic_engine: 'gbm', stochastic_volatility: 0.13,
-    historical_start_year: 1950, historical_end_year: 2025, 
-    simulation_start_year: defaultStartYear, simulation_start_month: defaultStartMonth, simulation_end_year: defaultStartYear + 50,
-    pensions_inflation_adjusted: true, pensions: [], cash_events: [], relocations: [], spending_events: [],
-    
-    // BUFFER SETTINGS
-    use_cash_buffer: false, buffer_target_months: 36, buffer_current_size: 120000, 
-    use_baseline_volatility: true, buffer_depletion_threshold: 0.0, buffer_replenishment_threshold: 0.10, buffer_refill_throttle_months: 3,
-    use_high_water_mark: false,
-    use_equity_glidepath: false, glidepath_months: 60,
-    use_dynamic_buffer: false, valuation_slow_sma_months: 60,
-    use_proportional_withdrawal: false,
-    equity_critical_mass_floor: 0.20, equity_replenish_threshold: 0.50
-  });
+  // Start with a null state to block rendering until backend values arrive
+  const [params, setParams] = useState(null);
   
   const [isSimulating, setIsSimulating] = useState(false);
   const [chartData, setChartData] = useState([]);
@@ -135,6 +101,7 @@ export default function App() {
   const [targetResults, setTargetResults] = useState(null);
 
   const handleFindMinimumCapital = async () => {
+    if (!params) return;
     setIsTargeting(true);
     setTargetResults(null);
     try {
@@ -192,21 +159,29 @@ export default function App() {
             pensionRegimes: data.pension_taxes || ['Finland'],
             taxStyles: newTaxStyles
         });
+
+        // Inject the Python SSOT defaults into the React state
+        if (data.default_params) {
+            setParams(data.default_params);
+        }
+
       } catch (err) { console.error("Failed to load backend config", err); }
     };
     loadConfig();
   }, []);
 
   const activeModels = useMemo(() => {
+    if (!params) return [];
     let expanded = [];
     params.growth_models.forEach(m => {
       if (m === 'stochastic') { expanded.push('stochastic_90', 'stochastic_50', 'stochastic_10'); } 
       else { expanded.push(m); }
     });
     return expanded;
-  }, [params.growth_models]);
+  }, [params?.growth_models]);
 
   useEffect(() => {
+    if (!params) return; // Wait for initial payload
     const fetchSimulation = async () => {
       setIsLoading(true); setError(null); setChartData([]); setIsSimulating(true); 
       try {
@@ -235,11 +210,10 @@ export default function App() {
   };
 
   const summaryStats = useMemo(() => {
-      if (!chartData || chartData.length === 0) return [];
+      if (!params || !chartData || chartData.length === 0) return [];
       const stats = [];
       
       activeModels.forEach(model => {
-        // Calculate the volatility defensively
         let annualizedVol = 0;
         const validReturns = chartData
           .map(row => parseFloat(row[`${model}_return`]))
@@ -264,17 +238,14 @@ export default function App() {
             finalValue = lastMonthData[dataKey]; 
           } 
           
-          // Execute evaluation loops across all timelines
           let depletionIndex = -1;
           for (let i = 0; i < chartData.length; i++) { 
 
-            // Hard depletion check
             if (chartData[i][dataKey] <= 0 && depletionIndex === -1) { 
               depletionMonth = chartData[i].month; 
               depletionIndex = i;
             } 
           
-            // Poverty Disqualifier Check
             const nominalSpend = chartData[i][`${model}_${tax}_spend`] !== undefined ? chartData[i][`${model}_${tax}_spend`] : chartData[i][`${model}_spend`];
             if (nominalSpend !== undefined && nominalSpend > 0) {
               const realSpend = nominalSpend / Math.pow(1 + params.inflation_percentage, i / 12);
@@ -284,7 +255,6 @@ export default function App() {
              }
           } 
           
-          // Check if pension eventually rescued the portfolio
           if (depletionIndex !== -1) {
             isBridgedByPension = true;
             for (let i = depletionIndex; i < chartData.length; i++) {
@@ -315,7 +285,7 @@ export default function App() {
         if (a.finalValue > 0) return -1; if (b.finalValue > 0) return 1;
         return (b.depletionMonth || 0) - (a.depletionMonth || 0);
       });
-    }, [chartData, activeModels, params.tax_residencies, dynamicModels, params.inflation_percentage, params.poverty_threshold]);
+    }, [chartData, activeModels, params?.tax_residencies, dynamicModels, params?.inflation_percentage, params?.poverty_threshold]);
     
     const toggleLineVisibility = (dataKey) => { setHiddenLines(prev => prev.includes(dataKey) ? prev.filter(k => k !== dataKey) : [...prev, dataKey]); };
     
@@ -325,21 +295,13 @@ export default function App() {
       setParams(prev => {
         let nextState = { ...prev, [name]: type === 'checkbox' ? checked : (type === 'number' || type === 'range' ? parseFloat(value) || 0 : value) };
         
-        // --- ENFORCE MUTUAL EXCLUSIVITY ---
         if (type === 'checkbox' && checked) {
-          
-          // 1. Spending Protocols (Only one active at a time)
           if (name === 'enable_low_season_spend') { nextState.use_guyton_klinger = false; nextState.use_proportional_attenuator = false; }
           if (name === 'use_guyton_klinger') { nextState.enable_low_season_spend = false; nextState.use_proportional_attenuator = false; }
           if (name === 'use_proportional_attenuator') { nextState.enable_low_season_spend = false; nextState.use_guyton_klinger = false; }
         
-          // 2. Buffer Routing Protocols
-          // Options 1, 4, and 5 are mutually exclusive BASE strategies.
-          // Options 2 and 3 are OVERLAYS that can be used together and alongside a base strategy.
-          if (name === 'use_baseline_volatility') { nextState.use_high_water_mark = false; nextState.use_proportional_withdrawal = false; }
-          if (name === 'use_high_water_mark') { nextState.use_baseline_volatility = false; nextState.use_proportional_withdrawal = false; }
-          if (name === 'use_proportional_withdrawal') { nextState.use_baseline_volatility = false; nextState.use_high_water_mark = false; }
-    
+          if (name === 'use_baseline_volatility') { nextState.use_high_water_mark = false; }
+          if (name === 'use_high_water_mark') { nextState.use_baseline_volatility = false; }
         }
         return nextState;
       }); 
@@ -352,7 +314,6 @@ export default function App() {
     };
     const handleArrayToggle = (key, id) => { setParams(prev => { const isSelected = prev[key].includes(id); const newList = isSelected ? prev[key].filter(i => i !== id) : [...prev[key], id]; return { ...prev, [key]: newList.length ? newList : [id] }; }); };
     
-    // Handlers for dynamic lists
     const addPension = () => { setParams(prev => ({ ...prev, pensions: [...prev.pensions, { amount: 1500, start_year: params.simulation_start_year + 10, start_month: 1, end_year: '', end_month: '', tax_regime: 'Finland' }] })); };
     const updatePension = (index, field, value) => { setParams(prev => { const newArr = [...prev.pensions]; newArr[index][field] = (field === 'end_year' || field === 'end_month') && value === '' ? '' : (field === 'tax_regime' ? value : Number(value) || 0); return { ...prev, pensions: newArr }; }); };
     const removePension = (index) => { setParams(prev => ({ ...prev, pensions: prev.pensions.filter((_, i) => i !== index) })); };
@@ -373,6 +334,15 @@ export default function App() {
     const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '14px' };
     const inputStyle = { width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' };
     const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+
+    // --- Loading Guard Clause ---
+    if (!params) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6', color: '#475569', fontSize: '18px', fontWeight: 'bold' }}>
+                Loading Engine Configuration...
+            </div>
+        );
+    }
 
     return (
       <div style={{ backgroundColor: '#f3f4f6', padding: '20px', fontFamily: 'system-ui, sans-serif', width: '100vw', height: '100vh', boxSizing: 'border-box', overflowX: 'hidden', color: '#111827', display: 'flex', flexDirection: 'column' }}>
@@ -400,7 +370,7 @@ export default function App() {
 
             <div style={inputGroupStyle}><label style={labelStyle}>Initial Investment (€)</label><input type="number" name="initial_investment" value={params.initial_investment} onChange={handleChange} style={inputStyle} /></div>
             <div style={inputGroupStyle}><label style={labelStyle}>Initial Profit Percentage (Decimal)</label><input type="number" name="initial_profit_percentage" value={params.initial_profit_percentage} onChange={handleChange} step="0.01" max="1" min="0" style={inputStyle} /></div>
-            <div style={inputGroupStyle}><label style={labelStyle}>Yearly Spending (€)</label><input type="number" name="yearly_spending" value={params.yearly_spending} onChange={handleChange} style={inputStyle} /></div>
+            <div style={inputGroupStyle}><label style={labelStyle}>Yearly Spending (Post-Tax) (€)</label><input type="number" name="yearly_spending" value={params.yearly_spending} onChange={handleChange} style={inputStyle} /></div>
             <div style={inputGroupStyle}><label style={labelStyle}>Inflation Rate (Decimal)</label><input type="number" name="inflation_percentage" value={params.inflation_percentage} onChange={handleChange} step="0.01" style={inputStyle} /></div>
             
             <div style={inputGroupStyle}>
@@ -497,7 +467,15 @@ export default function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div><label style={labelStyle}>Initial Buffer Size (€)</label><input type="number" name="buffer_current_size" value={params.buffer_current_size} onChange={handleChange} style={inputStyle} /></div>
                   <div><label style={labelStyle}>Steady-State Target Buffer (Months)</label><input type="number" name="buffer_target_months" value={params.buffer_target_months} onChange={handleChange} style={inputStyle} /></div>
-                  
+                  {/* INSTRUCTIONAL BLOCK */}
+                    <div style={{ fontSize: '13px', color: '#92400e', backgroundColor: '#fef3c7', padding: '10px 12px', borderRadius: '6px', marginBottom: '16px', borderLeft: '4px solid #fbbf24', lineHeight: '1.5' }}>
+                      <p style={{ margin: '0 0 8px 0' }}><strong>Strategy Stacking:</strong> You can run multiple protocols simultaneously. A sustainable system requires a balance of inflow (harvesting) and outflow (spending). If you select an Outflow rule, please ensure you pair it with an Inflow rule.</p>
+                      <ul style={{ margin: '0 0 8px 0', paddingLeft: '20px' }}>
+                        <li><strong>Inflow Rules (Refilling Cash):</strong> Option 1 (Baseline Volatility), Option 4 (High-Water Mark)</li>
+                        <li><strong>Outflow Rules (Draining Cash):</strong> Option 2 (SMA Guardrail), Option 5 (Proportional Withdrawal)</li>
+                      </ul>
+                      <p style={{ margin: 0, fontStyle: 'italic', fontSize: '12px' }}>Note: Option 3 (Dynamic Sizing) is a modifier that automatically adjusts the size of the buffer, not how it drains or fills.</p>
+                    </div>
                   {/* GLOBAL MODIFIER: Hysteresis */}
                   <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px', paddingBottom: '4px', marginTop: '4px' }}>
                     <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#92400e', marginBottom: '8px' }}>Global Structural Protectors (Hysteresis)</div>

@@ -60,16 +60,17 @@ class RelocationInput(BaseModel):
     new_regime: str
 
 class SimulationParams(BaseModel):
-    initial_investment: float
-    initial_profit_percentage: float
-    yearly_spending: float
-    inflation_percentage: float
-    pensions: List[PensionInput]
+    initial_investment: float = 1000000.0
+    initial_profit_percentage: float = 0.40
+    yearly_spending: float = 40000.0
+    inflation_percentage: float = 0.02
+    poverty_threshold: float = 600.0          # <- Added missing variable!
+    pensions: List[PensionInput] = []
     pensions_inflation_adjusted: bool = True
     cash_events: List[CashEventInput] = []
     relocations: List[RelocationInput] = []
     spending_events: List[SpendingEventInput] = []
-    growth_models: List[str] = ["linear"] # e.g., 'linear', 'stochastic', 'historical_sp500'
+    growth_models: List[str] = ["linear"]
     linear_rate: float = 0.07
     stochastic_engine: str = "gbm"
     stochastic_volatility: float = 0.13
@@ -86,7 +87,7 @@ class SimulationParams(BaseModel):
     buffer_target_months: int = 36
     buffer_current_size: float = 0.0
     buffer_depletion_threshold: float = 0.0
-    buffer_replenishment_threshold: float = 0.10
+    buffer_replenishment_threshold: float = 0.01  # Upgraded to 1%
     use_trend_guardrail: bool = False
     trend_sma_months: int = 12
     use_equity_glidepath: bool = False
@@ -96,8 +97,8 @@ class SimulationParams(BaseModel):
     use_high_water_mark: bool = False
     use_proportional_withdrawal: bool = False
     throttle_multiplier: int = 3
-    equity_critical_mass_floor: float = 0.2
-    equity_replenish_threshold: float = 0.5
+    equity_critical_mass_floor: float = 0.20
+    equity_replenish_threshold: float = 0.85      # Upgraded to 85%
     use_guyton_klinger: bool = False
     gk_upper_threshold: float = 0.20
     gk_lower_threshold: float = 0.20
@@ -105,7 +106,7 @@ class SimulationParams(BaseModel):
     gk_raise_rate: float = 0.10
     gk_allow_raises: bool = True
     use_proportional_attenuator: bool = False
-    attenuator_max_cut:float = 0.50
+    attenuator_max_cut: float = 0.50
 
 @app.post("/find_min_capital")
 def find_minimum_capital(params: dict = Body(...)):
@@ -149,7 +150,7 @@ def find_minimum_capital(params: dict = Body(...)):
                 
                 low = 100000.0
                 high = 10000000.0 # 10 Million upper bound
-                tolerance = 25000.0
+                tolerance = 100.0
                 best_safe_capital = high
                 best_p10_spends = []
                 target_spend = params['yearly_spending']
@@ -296,6 +297,14 @@ def find_minimum_capital(params: dict = Body(...)):
 @app.get("/config")
 def get_config():
     try:
+        # 1. Build the SSOT defaults. 
+        default_params = SimulationParams().model_dump()
+    except Exception as e:
+        print(f"CRITICAL ERROR generating default params: {e}")
+        default_params = {} # Fallback to prevent UI lockup
+
+    try:
+        # 2. Load the JSONs
         with open("indices_monthly.json", "r") as f:
             indices = json.load(f)
         with open("taxes.json", "r") as f:
@@ -304,10 +313,17 @@ def get_config():
         return {
             "historical_indices": list(indices.keys()),
             "capital_gains_taxes": list(taxes.get("capital_gains", {}).keys()),
-            "pension_taxes": list(taxes.get("pension_income", {}).keys())
+            "pension_taxes": list(taxes.get("pension_income", {}).keys()),
+            "default_params": default_params 
         }
     except Exception as e:
-        return {"historical_indices": [], "capital_gains_taxes": ["Finland"], "pension_taxes": ["Finland"]}
+        print(f"Warning: Could not load JSON configs: {e}")
+        return {
+            "historical_indices": [], 
+            "capital_gains_taxes": ["Finland"], 
+            "pension_taxes": ["Finland"],
+            "default_params": default_params 
+        }
 
 @app.post("/simulate")
 def run_simulation(params: SimulationParams):
