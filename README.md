@@ -91,13 +91,19 @@ The simulator is built to handle reality, tracking cashflows down to the exact m
 
 ### Running the Application (Docker)
 
-1. Ensure Docker Desktop is running.
-2. Build and launch the full stack (FastAPI backend + React frontend):
+Ensure your Docker daemon is running. You do not strictly need Docker Desktop; any environment that provides the Docker Engine and Docker Compose will work perfectly. Common setups include:
+
+* **Windows:** A native Docker Engine installed directly inside a WSL2 Linux distribution (e.g., Ubuntu), or Docker Desktop.
+* **macOS:** OrbStack, Colima, or Docker Desktop.
+* **Linux:** Native Docker Engine.
+
+Once your container environment is active, build and launch the full stack (FastAPI backend + React frontend) from the project root:
 
 ```bash
-docker-compose up --build
-
+docker compose up --build
 ```
+*(Note: Use `docker-compose` with a hyphen if your environment is still using the older Compose v1).*
+
 
 ### Architecture
 
