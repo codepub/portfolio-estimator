@@ -513,13 +513,8 @@ export default function App() {
                     <div><label style={labelStyle}>Steady-State Target Buffer (Months)</label><input type="number" name="buffer_target_months" value={params.buffer_target_months} onChange={handleChange} style={inputStyle} /></div>
                     
                     {/* INSTRUCTIONAL BLOCK */}
-                    <div style={{ fontSize: '13px', color: '#92400e', backgroundColor: '#fef3c7', padding: '10px 12px', borderRadius: '6px', marginBottom: '16px', borderLeft: '4px solid #fbbf24', lineHeight: '1.5' }}>
-                      <p style={{ margin: '0 0 8px 0' }}><strong>Strategy Stacking:</strong> You can run multiple protocols simultaneously. A sustainable system requires a balance of inflow (harvesting) and outflow (spending). If you select an Outflow rule, please ensure you pair it with an Inflow rule.</p>
-                      <ul style={{ margin: '0 0 8px 0', paddingLeft: '20px' }}>
-                        <li><strong>Inflow Rules (Refilling Cash):</strong> Option 1 (Baseline Volatility), Option 4 (High-Water Mark)</li>
-                        <li><strong>Outflow Rules (Draining Cash):</strong> Option 2 (SMA Guardrail), Option 5 (Proportional Withdrawal)</li>
-                      </ul>
-                      <p style={{ margin: 0, fontStyle: 'italic', fontSize: '12px' }}>Note: Option 3 (Dynamic Sizing) is a modifier that automatically adjusts the size of the buffer, not how it drains or fills.</p>
+                    <div style={{ fontSize: '13px', color: '#92400e', backgroundColor: '#fef3c7', padding: '10px 12px', borderRadius: '6px', marginBottom: '8px', borderLeft: '4px solid #fbbf24', lineHeight: '1.5' }}>
+                      <p style={{ margin: 0 }}><strong>Strategy Stacking:</strong> You can run multiple protocols simultaneously. A sustainable system requires a balance of inflow (harvesting) and outflow (spending). It is highly recommended to select at least one Inflow rule and one Outflow rule.</p>
                     </div>
 
                     {/* GLOBAL MODIFIER: Hysteresis */}
@@ -551,84 +546,100 @@ export default function App() {
 
                     {/* PHASE 2: STEADY-STATE ROUTING */}
                     <div style={{ borderTop: '2px solid #fcd34d', paddingTop: '16px', marginTop: '16px' }}>
-                      <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#b45309', marginBottom: '12px' }}>Phase 2: Steady-State Strategy</div>
+                      <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#b45309', marginBottom: '16px' }}>Phase 2: Steady-State Strategy</div>
 
-                      {/* OPTION 1 */}
-                      <div style={{ marginBottom: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_baseline_volatility ? '8px' : '0' }}>
-                          <input type="checkbox" id="use_baseline_volatility" name="use_baseline_volatility" checked={params.use_baseline_volatility || false} onChange={handleChange} />
-                          <label htmlFor="use_baseline_volatility" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>1. Baseline Volatility Thresholds</label>
+                      {/* --- INFLOW RULES --- */}
+                      <div style={{ marginBottom: '16px', backgroundColor: '#fffbeb', padding: '12px', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', marginBottom: '12px', borderBottom: '1px solid #fcd34d', paddingBottom: '6px' }}>
+                          📥 Inflow Rules (Refilling Cash)
                         </div>
-                        {params.use_baseline_volatility && (
-                          <div style={{ paddingLeft: '24px' }}>
-                            <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Refills the buffer when the market is up by a specific percentage, and uses the buffer when the market drops below a threshold.</p>
-                            <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
-                              <div style={{ flex: 1 }}><label style={labelStyle}>Depletion Threshold</label><input type="number" name="buffer_depletion_threshold" value={params.buffer_depletion_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
-                              <div style={{ flex: 1 }}><label style={labelStyle}>Replenish Threshold</label><input type="number" name="buffer_replenishment_threshold" value={params.buffer_replenishment_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
+                        
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_baseline_volatility ? '8px' : '0' }}>
+                            <input type="checkbox" id="use_baseline_volatility" name="use_baseline_volatility" checked={params.use_baseline_volatility || false} onChange={handleChange} />
+                            <label htmlFor="use_baseline_volatility" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>Baseline Volatility Thresholds</label>
+                          </div>
+                          {params.use_baseline_volatility && (
+                            <div style={{ paddingLeft: '24px' }}>
+                              <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Refills the buffer when the market is up by a specific percentage, and uses the buffer when the market drops below a threshold.</p>
+                              <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
+                                <div style={{ flex: 1 }}><label style={labelStyle}>Depletion Threshold</label><input type="number" name="buffer_depletion_threshold" value={params.buffer_depletion_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
+                                <div style={{ flex: 1 }}><label style={labelStyle}>Replenish Threshold</label><input type="number" name="buffer_replenishment_threshold" value={params.buffer_replenishment_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
+                              </div>
+                              <div>
+                                <label style={labelStyle}>Refill Throttle (Max Months/Transfer)</label>
+                                <input type="number" name="buffer_refill_throttle_months" value={params.buffer_refill_throttle_months} onChange={handleChange} style={inputStyle} min="1" max="12" />
+                              </div>
                             </div>
-                            <div>
-                              <label style={labelStyle}>Refill Throttle (Max Months/Transfer)</label>
-                              <input type="number" name="buffer_refill_throttle_months" value={params.buffer_refill_throttle_months} onChange={handleChange} style={inputStyle} min="1" max="12" />
+                          )}
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input type="checkbox" id="use_high_water_mark" name="use_high_water_mark" checked={params.use_high_water_mark} onChange={handleChange} />
+                            <label htmlFor="use_high_water_mark" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>High-Water Mark</label>
+                          </div>
+                          {params.use_high_water_mark && (
+                            <div style={{ paddingLeft: '24px', paddingTop: '8px' }}>
+                               <p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>Tracks the all-time high of the portfolio. Equities are only sold if the current value is within a certain distance of the peak.</p>
                             </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
 
-                      {/* OPTION 2 */}
-                      <div style={{ marginBottom: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_trend_guardrail ? '8px' : '0' }}>
-                          <input type="checkbox" id="use_trend_guardrail" name="use_trend_guardrail" checked={params.use_trend_guardrail} onChange={handleChange} />
-                          <label htmlFor="use_trend_guardrail" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>2. SMA Trend Guardrail (Circuit Breaker)</label>
+                      {/* --- OUTFLOW RULES --- */}
+                      <div style={{ marginBottom: '16px', backgroundColor: '#fffbeb', padding: '12px', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', marginBottom: '12px', borderBottom: '1px solid #fcd34d', paddingBottom: '6px' }}>
+                          📤 Outflow Rules (Draining Cash)
                         </div>
-                        {params.use_trend_guardrail && (
-                          <div style={{ paddingLeft: '24px' }}>
-                            <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Monitors a fast moving average. If the market drops below the SMA, it intercepts withdrawals and drains cash to protect equities.</p>
-                            <div><label style={labelStyle}>Fast SMA Window (Months)</label><input type="number" name="trend_sma_months" value={params.trend_sma_months || 12} onChange={handleChange} min="1" max="120" style={inputStyle} /></div>
+                        
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_trend_guardrail ? '8px' : '0' }}>
+                            <input type="checkbox" id="use_trend_guardrail" name="use_trend_guardrail" checked={params.use_trend_guardrail} onChange={handleChange} />
+                            <label htmlFor="use_trend_guardrail" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>SMA Trend Guardrail (Circuit Breaker)</label>
                           </div>
-                        )}
+                          {params.use_trend_guardrail && (
+                            <div style={{ paddingLeft: '24px' }}>
+                              <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Monitors a fast moving average. If the market drops below the SMA, it intercepts withdrawals and drains cash to protect equities.</p>
+                              <div><label style={labelStyle}>Fast SMA Window (Months)</label><input type="number" name="trend_sma_months" value={params.trend_sma_months || 12} onChange={handleChange} min="1" max="120" style={inputStyle} /></div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input type="checkbox" id="use_proportional_withdrawal" name="use_proportional_withdrawal" checked={params.use_proportional_withdrawal || false} onChange={handleChange} />
+                            <label htmlFor="use_proportional_withdrawal" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>Valuation-Based Proportional Withdrawal</label>
+                          </div>
+                          {params.use_proportional_withdrawal && (
+                            <div style={{ paddingLeft: '24px', paddingTop: '8px' }}>
+                               <p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>Splits your monthly withdrawals elastically between equities and cash based on multiple regime indicators (Clear Skies, Correction, Crash).</p>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
-                      {/* OPTION 3 */}
-                      <div style={{ marginBottom: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_dynamic_buffer ? '8px' : '0' }}>
-                          <input type="checkbox" id="use_dynamic_buffer" name="use_dynamic_buffer" checked={params.use_dynamic_buffer} onChange={handleChange} />
-                          <label htmlFor="use_dynamic_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>3. Dynamic Counter-Cyclical Sizing</label>
+                      {/* --- MODIFIERS --- */}
+                      <div style={{ backgroundColor: '#fffbeb', padding: '12px', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', marginBottom: '12px', borderBottom: '1px solid #fcd34d', paddingBottom: '6px' }}>
+                          ⚙️ Strategy Modifiers
                         </div>
-                        {params.use_dynamic_buffer && (
-                          <div style={{ paddingLeft: '24px' }}>
-                            <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Continuously expands or shrinks the target size of your cash buffer based on macro valuation trends to naturally buy low and sell high.</p>
-                            <div><label style={labelStyle}>Slow SMA Window (Months)</label><input type="number" name="valuation_slow_sma_months" value={params.valuation_slow_sma_months || 60} onChange={handleChange} min="12" max="240" style={inputStyle} /></div>
+                        
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_dynamic_buffer ? '8px' : '0' }}>
+                            <input type="checkbox" id="use_dynamic_buffer" name="use_dynamic_buffer" checked={params.use_dynamic_buffer} onChange={handleChange} />
+                            <label htmlFor="use_dynamic_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>Dynamic Counter-Cyclical Sizing</label>
                           </div>
-                        )}
+                          {params.use_dynamic_buffer && (
+                            <div style={{ paddingLeft: '24px' }}>
+                              <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Continuously expands or shrinks the target size of your cash buffer based on macro valuation trends to naturally buy low and sell high.</p>
+                              <div><label style={labelStyle}>Slow SMA Window (Months)</label><input type="number" name="valuation_slow_sma_months" value={params.valuation_slow_sma_months || 60} onChange={handleChange} min="12" max="240" style={inputStyle} /></div>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
-                      {/* OPTION 4 */}
-                      <div style={{ marginBottom: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <input type="checkbox" id="use_high_water_mark" name="use_high_water_mark" checked={params.use_high_water_mark} onChange={handleChange} />
-                          <label htmlFor="use_high_water_mark" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>4. High-Water Mark</label>
-                        </div>
-                        {params.use_high_water_mark && (
-                          <div style={{ paddingLeft: '24px', paddingTop: '8px' }}>
-                             <p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>Tracks the all-time high of the portfolio. Equities are only sold if the current value is within a certain distance of the peak.</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* OPTION 5 */}
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <input type="checkbox" id="use_proportional_withdrawal" name="use_proportional_withdrawal" checked={params.use_proportional_withdrawal || false} onChange={handleChange} />
-                          <label htmlFor="use_proportional_withdrawal" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>5. Valuation-Based Proportional Withdrawal</label>
-                        </div>
-                        {params.use_proportional_withdrawal && (
-                          <div style={{ paddingLeft: '24px', paddingTop: '8px' }}>
-                             <p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>Splits your monthly withdrawals elastically between equities and cash based on multiple regime indicators (Clear Skies, Correction, Crash).</p>
-                          </div>
-                        )}
-                      </div>
                     </div>
-
                   </div>               
                 )}
               </div>
