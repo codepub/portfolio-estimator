@@ -488,8 +488,8 @@ export default function App() {
             </div>
 
   
-           {/* --- CASH BUFFER MASTER CONTAINER --- */}
-            <div style={{ ...inputGroupStyle, backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+  {/* --- CASH BUFFER MASTER CONTAINER --- */}
+            <div style={{ ...inputGroupStyle, backgroundColor: '#f8fafc', padding: '16px 16px 14px 16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
               <div style={{ marginBottom: '12px' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: '#334155', margin: '0 0 4px 0' }}>Cash Buffer Strategy</h3>
                 <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Maintain a dedicated cash reserve to fund living expenses during market downturns, preventing the forced sale of equities at depressed prices.</p>
@@ -503,8 +503,8 @@ export default function App() {
                   transition: 'all 0.2s'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_cash_buffer ? '12px' : '0' }}>
-                  <input type="checkbox" id="use_cash_buffer" name="use_cash_buffer" checked={params.use_cash_buffer || false} onChange={handleChange} />
-                  <label htmlFor="use_cash_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: params.use_cash_buffer ? '#92400e' : '#475569', cursor: 'pointer' }}>Enable Cash Buffer Controls</label>
+                  <input type="checkbox" id="use_cash_buffer" name="use_cash_buffer" checked={params.use_cash_buffer || false} onChange={handleChange} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} />
+                  <label htmlFor="use_cash_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: params.use_cash_buffer ? '#92400e' : '#475569', cursor: 'pointer', userSelect: 'none' }}>Enable Cash Buffer Controls</label>
                 </div>
 
                 {params.use_cash_buffer && (
@@ -520,7 +520,7 @@ export default function App() {
                     {/* GLOBAL MODIFIER: Hysteresis */}
                     <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px', paddingBottom: '4px', marginTop: '4px' }}>
                       <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#92400e', marginBottom: '8px' }}>Global Structural Protectors (Hysteresis)</div>
-                      <div style={{ display: 'flex', gap: '10px' }}>
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                         <div style={{ flex: 1 }}><label style={labelStyle}>Critical Mass Floor (Decimal)</label><input type="number" name="equity_critical_mass_floor" value={params.equity_critical_mass_floor} onChange={handleChange} step="0.01" min="0" max="1" style={inputStyle} /></div>
                         <div style={{ flex: 1 }}><label style={labelStyle}>Replenish Threshold (Decimal)</label><input type="number" name="equity_replenish_threshold" value={params.equity_replenish_threshold} onChange={handleChange} step="0.01" min="0" max="1" style={inputStyle} /></div>
                       </div>
@@ -531,8 +531,8 @@ export default function App() {
                       <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#b45309', marginBottom: '12px' }}>Phase 1: Initial Sequence Risk Mitigation</div>
                       
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_equity_glidepath ? '8px' : '0' }}>
-                        <input type="checkbox" id="use_equity_glidepath" name="use_equity_glidepath" checked={params.use_equity_glidepath} onChange={handleChange} />
-                        <label htmlFor="use_equity_glidepath" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>Enable Bond Tent / Equity Glidepath</label>
+                        <input type="checkbox" id="use_equity_glidepath" name="use_equity_glidepath" checked={params.use_equity_glidepath} onChange={handleChange} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} />
+                        <label htmlFor="use_equity_glidepath" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'pointer', userSelect: 'none' }}>Enable Bond Tent / Equity Glidepath</label>
                       </div>
                       
                       {params.use_equity_glidepath && (
@@ -556,8 +556,8 @@ export default function App() {
                         
                         <div style={{ marginBottom: '12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_baseline_volatility ? '8px' : '0' }}>
-                            <input type="checkbox" id="use_baseline_volatility" name="use_baseline_volatility" checked={params.use_baseline_volatility || false} onChange={handleChange} />
-                            <label htmlFor="use_baseline_volatility" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>Baseline Volatility Thresholds</label>
+                            <input type="checkbox" id="use_baseline_volatility" name="use_baseline_volatility" checked={params.use_baseline_volatility || false} onChange={handleChange} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} />
+                            <label htmlFor="use_baseline_volatility" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'pointer', userSelect: 'none' }}>Baseline Volatility Thresholds</label>
                           </div>
                           {params.use_baseline_volatility && (
                             <div style={{ paddingLeft: '24px' }}>
@@ -576,8 +576,8 @@ export default function App() {
 
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <input type="checkbox" id="use_high_water_mark" name="use_high_water_mark" checked={params.use_high_water_mark} onChange={handleChange} />
-                            <label htmlFor="use_high_water_mark" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>High-Water Mark</label>
+                            <input type="checkbox" id="use_high_water_mark" name="use_high_water_mark" checked={params.use_high_water_mark} onChange={handleChange} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} />
+                            <label htmlFor="use_high_water_mark" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'pointer', userSelect: 'none' }}>High-Water Mark</label>
                           </div>
                           {params.use_high_water_mark && (
                             <div style={{ paddingLeft: '24px', paddingTop: '8px' }}>
@@ -595,8 +595,8 @@ export default function App() {
                         
                         <div style={{ marginBottom: '12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_trend_guardrail ? '8px' : '0' }}>
-                            <input type="checkbox" id="use_trend_guardrail" name="use_trend_guardrail" checked={params.use_trend_guardrail} onChange={handleChange} />
-                            <label htmlFor="use_trend_guardrail" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>SMA Trend Guardrail (Circuit Breaker)</label>
+                            <input type="checkbox" id="use_trend_guardrail" name="use_trend_guardrail" checked={params.use_trend_guardrail} onChange={handleChange} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} />
+                            <label htmlFor="use_trend_guardrail" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'pointer', userSelect: 'none' }}>SMA Trend Guardrail (Circuit Breaker)</label>
                           </div>
                           {params.use_trend_guardrail && (
                             <div style={{ paddingLeft: '24px' }}>
@@ -608,8 +608,8 @@ export default function App() {
 
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <input type="checkbox" id="use_proportional_withdrawal" name="use_proportional_withdrawal" checked={params.use_proportional_withdrawal || false} onChange={handleChange} />
-                            <label htmlFor="use_proportional_withdrawal" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>Valuation-Based Proportional Withdrawal</label>
+                            <input type="checkbox" id="use_proportional_withdrawal" name="use_proportional_withdrawal" checked={params.use_proportional_withdrawal || false} onChange={handleChange} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} />
+                            <label htmlFor="use_proportional_withdrawal" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'pointer', userSelect: 'none' }}>Valuation-Based Proportional Withdrawal</label>
                           </div>
                           {params.use_proportional_withdrawal && (
                             <div style={{ paddingLeft: '24px', paddingTop: '8px' }}>
@@ -627,8 +627,8 @@ export default function App() {
                         
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: params.use_dynamic_buffer ? '8px' : '0' }}>
-                            <input type="checkbox" id="use_dynamic_buffer" name="use_dynamic_buffer" checked={params.use_dynamic_buffer} onChange={handleChange} />
-                            <label htmlFor="use_dynamic_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309' }}>Dynamic Counter-Cyclical Sizing</label>
+                            <input type="checkbox" id="use_dynamic_buffer" name="use_dynamic_buffer" checked={params.use_dynamic_buffer} onChange={handleChange} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} />
+                            <label htmlFor="use_dynamic_buffer" style={{ fontSize: '14px', fontWeight: 'bold', color: '#b45309', cursor: 'pointer', userSelect: 'none' }}>Dynamic Counter-Cyclical Sizing</label>
                           </div>
                           {params.use_dynamic_buffer && (
                             <div style={{ paddingLeft: '24px' }}>
@@ -644,7 +644,6 @@ export default function App() {
                 )}
               </div>
             </div>
-
 
             <div style={{ ...inputGroupStyle, backgroundColor: '#f9fafb', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
               <label style={labelStyle}>Compare Tax Residencies (Cap Gains)</label>
