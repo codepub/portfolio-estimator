@@ -110,6 +110,11 @@ Once your environment is active, build and launch the full stack (FastAPI backen
 ```bash
 docker compose up --build
 ```
+To exit the program, type 
+```bash
+docker compose down
+```
+
 *(Note: Use `docker-compose` with a hyphen if your environment is using Compose v1, or `podman-compose` if you are running Podman).*
 
 ### Architecture
