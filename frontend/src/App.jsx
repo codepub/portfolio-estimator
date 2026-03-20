@@ -537,7 +537,7 @@ export default function App() {
                       
                       {params.use_equity_glidepath && (
                         <div style={{ paddingLeft: '24px' }}>
-                          <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Forces 100% of spending from cash to eliminate Sequence of Returns Risk. Hands off to Phase 2 when the time expires or cash runs out.</p>
+                          <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Activates at the very beginning of your timeline. Forces 100% of your early spending to come exclusively from cash, protecting your equities from initial market crashes. Hands off to Phase 2 when the time expires or cash runs out.</p>
                           <label style={labelStyle}>Glidepath Duration (Months)</label>
                           <input type="number" name="glidepath_months" value={params.glidepath_months || 60} onChange={handleChange} min="12" max="240" style={inputStyle} />
                         </div>
