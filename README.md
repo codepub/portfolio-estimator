@@ -91,7 +91,7 @@ The simulator is built to handle reality, tracking cashflows down to the exact m
 
 ### Running the Application (Docker)
 
-Ensure your Docker daemon is running. You do not strictly need Docker Desktop; any environment that provides the Docker Engine and Docker Compose will work perfectly. Common setups include:
+Ensure your Docker daemon is running. Any environment that provides the Docker Engine and Docker Compose will work perfectly. Common setups include:
 
 * **Windows:** A native Docker Engine installed directly inside a WSL2 Linux distribution (e.g., Ubuntu), or Docker Desktop.
 * **macOS:** OrbStack, Colima, or Docker Desktop.
