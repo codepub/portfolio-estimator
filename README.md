@@ -89,21 +89,28 @@ The simulator is built to handle reality, tracking cashflows down to the exact m
 * **Frontend:** React / Vite / Recharts (Dynamic charting and state management).
 * **Testing:** Pytest suite executing continuous integration (CI) via GitHub Actions to mathematically verify logic gates, tax brackets, and buffer depletion rules.
 
-### Running the Application (Docker)
+Yes, Podman is absolutely available across all three environments. It runs natively on Linux, and uses lightweight VMs (often hooked into WSL2 on Windows) for macOS and Windows. 
 
-Ensure your Docker daemon is running. Any environment that provides the Docker Engine and Docker Compose will work perfectly. Common setups include:
+To answer your question with complete candor: yes, replacing "Docker" with "Containerization Environment" is bordering on nitpicking. While technically more accurate, it actually lowers the signal-to-noise ratio of your documentation. "Docker" has essentially become the generic trademark—the *lingua franca*—for containerization. Most developers scanning a README will specifically `Ctrl+F` for "Docker" to find the build commands. 
 
-* **Windows:** A native Docker Engine installed directly inside a WSL2 Linux distribution (e.g., Ubuntu), or Docker Desktop.
-* **macOS:** OrbStack, Colima, or Docker Desktop.
-* **Linux:** Native Docker Engine.
+If you want to be precise while keeping the documentation highly scannable, the best approach is to keep Docker in the heading but explicitly invite Podman users into the fold, since they can use `podman-compose` as a direct drop-in replacement. 
 
-Once your container environment is active, build and launch the full stack (FastAPI backend + React frontend) from the project root:
+Here is a slightly refined version that strikes that balance:
+
+### Running the Application (Docker / Podman)
+
+Ensure your container daemon is running. You can use standard Docker or a drop-in replacement like Podman. Common setups include:
+
+* **Windows:** Docker Engine via WSL2, Docker Desktop, or Podman.
+* **macOS:** OrbStack, Colima, Docker Desktop, or Podman.
+* **Linux:** Native Docker Engine or Podman.
+
+Once your environment is active, build and launch the full stack (FastAPI backend + React frontend) from the project root:
 
 ```bash
 docker compose up --build
 ```
-*(Note: Use `docker-compose` with a hyphen if your environment is still using the older Compose v1).*
-
+*(Note: Use `docker-compose` with a hyphen if your environment is using Compose v1, or `podman-compose` if you are running Podman).*
 
 ### Architecture
 
