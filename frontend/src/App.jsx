@@ -912,7 +912,8 @@ export default function App() {
                   <span style={{ backgroundColor: '#059669', color: '#fff', width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>2</span>
                   Analytical Engine
                 </h2>
-                <p style={{ margin: '4px 0 0 32px', fontSize: '12px', color: '#64748b' }}>Select your analysis mode: Forward Projection to see how far money goes - Find Required Capital to see how much money you need to meet your simulation parameters.</p>
+                <p style={{ margin: '4px 0 0 32px', fontSize: '12px', color: '#64748b' }}>Select Forward Projection to see how far your money goes with your simulation parameters.</p>
+                <p style={{ margin: '4px 0 0 32px', fontSize: '12px', color: '#64748b' }}>Select Find Required Capital to see how much money you'd need to meet your simulation parameters.</p>
               </div>
 
               {/* TAB TOGGLE */}
