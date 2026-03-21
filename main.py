@@ -85,7 +85,8 @@ class SimulationParams(BaseModel):
     low_season_cut_percentage: float = 0.10
     use_cash_buffer: bool = False
     buffer_target_months: int = 36
-    buffer_current_size: float = 0.0
+    buffer_current_size: float = 120000.0
+    buffer_refill_throttle_months: int = 3
     buffer_depletion_threshold: float = 0.0
     buffer_replenishment_threshold: float = 0.01  # Upgraded to 1%
     use_trend_guardrail: bool = False
