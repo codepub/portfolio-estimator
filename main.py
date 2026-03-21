@@ -127,12 +127,12 @@ def find_minimum_capital(params: dict = Body(...)):
     # 1. Pre-generate and freeze timelines for fair binary searching
     frozen_timelines = {}
     if 'stochastic' in params.get('growth_models', []):
-        random.seed(42) # Lock universe for monotonic search
+        random.seed(600) # Lock universe for monotonic search
         vol = params.get('stochastic_volatility', 0.13)
         if params.get('stochastic_engine') == 'heston':
-            frozen_timelines['stochastic'] = [simulator._generate_heston_returns(0.07, vol, total_months) for _ in range(iterations)]
+            frozen_timelines['stochastic'] = [simulator._generate_heston_returns(params.get('linear_rate', 0.07), vol, total_months) for _ in range(iterations)]
         else:
-            frozen_timelines['stochastic'] = [simulator._generate_gbm_returns(0.07, vol, total_months) for _ in range(iterations)]
+            frozen_timelines['stochastic'] = [simulator._generate_gbm_returns(params.get('linear_rate', 0.07), vol, total_months) for _ in range(iterations)]
     
     results = []
     
@@ -149,6 +149,12 @@ def find_minimum_capital(params: dict = Body(...)):
         for model in search_models:
             for tax in params.get('tax_residencies', ['Finland']):
                 
+                # --- NEW STATISTICAL TARGETS ---
+                target_survival_rate = 1.0
+                if model == 'Stochastic (Worst 10%)': target_survival_rate = 0.90
+                elif model == 'Stochastic (Median)': target_survival_rate = 0.50
+                elif model == 'Stochastic (Best 10%)': target_survival_rate = 0.10
+
                 low = 100000.0
                 high = 10000000.0 # 10 Million upper bound
                 tolerance = 100.0
@@ -156,7 +162,11 @@ def find_minimum_capital(params: dict = Body(...)):
                 best_p10_spends = []
                 target_spend = params['yearly_spending']
                 
-                while (high - low) > tolerance:
+                step_count = 0
+                max_steps = 40 # Added failsafe to prevent infinite loops
+                
+                while (high - low) > tolerance and step_count < max_steps:
+                    step_count += 1
                     test_cap = (low + high) / 2.0
                     
                     # Setup the test payload
@@ -183,7 +193,6 @@ def find_minimum_capital(params: dict = Body(...)):
                     else:
                         timelines_to_test = [[0.0] * total_months]
 
-                    final_wealths = []
                     monthly_inflation_rate = (1 + test_params['inflation_percentage']) ** (1/12) - 1
                     
                     # Launch all timelines simultaneously into the worker pool
@@ -196,6 +205,11 @@ def find_minimum_capital(params: dict = Body(...)):
                         ) for rates in timelines_to_test
                     ]
                     
+                    # --- NEW STATISTICAL EVALUATION ---
+                    surviving_paths = 0
+                    all_path_data = []
+                    total_paths = len(timelines_to_test)
+                    
                     # Collect them as they finish crunching
                     for future in concurrent.futures.as_completed(futures):
                         res = future.result()
@@ -204,32 +218,44 @@ def find_minimum_capital(params: dict = Body(...)):
                         for year in range(1, (total_months // 12) + 1):
                             start_m = (year - 1) * 12 + 1
                             end_m = year * 12
-                            # Compact list comprehension for the pure monthly discounting
                             real_annual_sum = sum(res[m]['spend'] / ((1 + monthly_inflation_rate) ** (m - 1)) for m in range(start_m, end_m + 1))
                             annual_real_spends.append(real_annual_sum)
                                 
-                        final_wealths.append({
-                            'wealth': res[total_months]['value'], 
-                            'min_spend': min(annual_real_spends),
+                        final_wealth = res[total_months]['value']
+                        min_spend = min(annual_real_spends)
+                        
+                        if final_wealth > 0 and min_spend >= poverty_threshold_annual:
+                            surviving_paths += 1
+                            
+                        all_path_data.append({
+                            'wealth': final_wealth,
+                            'min_spend': min_spend,
                             'spends': annual_real_spends
                         })
                     
-                    final_wealths.sort(key=lambda x: x['wealth'])
+                    survival_rate = surviving_paths / total_paths
                     
-                    # Target the specific percentile
-                    if model == 'Stochastic (Worst 10%)': eval_idx = int(iterations * 0.10)
-                    elif model == 'Stochastic (Median)': eval_idx = int(iterations * 0.50)
-                    elif model == 'Stochastic (Best 10%)': eval_idx = int(iterations * 0.90)
-                    else: eval_idx = 0 
-                    
-                    outcome = final_wealths[eval_idx]
-                    
-                    if outcome['wealth'] > 0 and outcome['min_spend'] >= poverty_threshold_annual:
+                    # --- THE DIAGNOSTIC LOG ---
+                    if model == 'Stochastic (Worst 10%)':
+                        print(f"Test Cap: €{test_cap:,.0f} | Survival Rate: {survival_rate*100:.1f}% (Target: {target_survival_rate*100:.1f}%)")
+
+                    # Adjust the search window based on the overall survival batch rate
+                    if survival_rate >= target_survival_rate:
                         best_safe_capital = test_cap
-                        best_p10_spends = outcome['spends'] 
+                        
+                        # Grab the spending sequence of the representative percentile path for the UI charts
+                        all_path_data.sort(key=lambda x: x['wealth'])
+                        if model == 'Stochastic (Worst 10%)': eval_idx = int(total_paths * 0.10)
+                        elif model == 'Stochastic (Median)': eval_idx = int(total_paths * 0.50)
+                        elif model == 'Stochastic (Best 10%)': eval_idx = int(total_paths * 0.90)
+                        else: eval_idx = 0 
+                        
+                        eval_idx = max(0, min(eval_idx, total_paths - 1))
+                        best_p10_spends = all_path_data[eval_idx]['spends']
+                        
                         high = test_cap 
                     else:
-                        low = test_cap 
+                        low = test_cap
 
                 # Calculate Psychological Bins & Deepest Cut
                 bins = {"100%": 0, "95-99%": 0, "85-94%": 0, "<85%": 0}
