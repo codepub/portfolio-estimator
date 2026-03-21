@@ -368,18 +368,35 @@ export default function App() {
                 <span style={{ backgroundColor: '#2563eb', color: '#fff', width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>1</span>
                 Simulation Parameters
               </h2>
-              <p style={{ margin: '4px 0 0 32px', fontSize: '12px', color: '#64748b' }}>Adjust inputs to update the projection instantly.</p>
+              <p style={{ margin: '4px 0 0 32px', fontSize: '12px', color: '#64748b' }}>Configuration used by both analytical engine modes.</p>
             </div>
 
             <div style={{ padding: '20px' }}>
               <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', backgroundColor: '#e0e7ff', padding: '12px', borderRadius: '6px', border: '1px solid #c7d2fe' }}>
-                <div style={{ flex: 1 }}><label style={labelStyle}>Start Yr</label><input type="number" name="simulation_start_year" value={params.simulation_start_year} onChange={handleChange} style={inputStyle} /></div>
-                <div style={{ flex: 1 }}><label style={labelStyle}>Start Mo</label><input type="number" name="simulation_start_month" value={params.simulation_start_month} min="1" max="12" onChange={handleChange} style={inputStyle} /></div>
-                <div style={{ flex: 1 }}><label style={labelStyle}>End Yr</label><input type="number" name="simulation_end_year" value={params.simulation_end_year} onChange={handleChange} style={inputStyle} /></div>
+                <div style={{ flex: 1 }}><label style={labelStyle}>Start Year</label><input type="number" name="simulation_start_year" value={params.simulation_start_year} onChange={handleChange} style={inputStyle} /></div>
+                <div style={{ flex: 1 }}><label style={labelStyle}>Start Month</label><input type="number" name="simulation_start_month" value={params.simulation_start_month} min="1" max="12" onChange={handleChange} style={inputStyle} /></div>
+                <div style={{ flex: 1 }}><label style={labelStyle}>End Year</label><input type="number" name="simulation_end_year" value={params.simulation_end_year} onChange={handleChange} style={inputStyle} /></div>
               </div>
 
-              <div style={inputGroupStyle}><label style={labelStyle}>Initial Investment (€)</label><input type="number" name="initial_investment" value={params.initial_investment} onChange={handleChange} style={inputStyle} /></div>
-              <div style={inputGroupStyle}><label style={labelStyle}>Initial Profit Percentage (Decimal)</label><input type="number" name="initial_profit_percentage" value={params.initial_profit_percentage} onChange={handleChange} step="0.01" max="1" min="0" style={inputStyle} /></div>
+              <div style={inputGroupStyle}>
+                <label 
+                  style={labelStyle}
+                  title="The starting size of your portfolio for forward projections.&#10;Note: Find Required Capital function (The Reverse Solver) ignores this value, as this is exactly the number it is trying to calculate."
+                >
+                  Initial Capital (€) ℹ️
+                </label>
+                <input type="number" name="initial_investment" value={params.initial_investment} onChange={handleChange} style={inputStyle} />
+              </div>
+              
+              <div style={inputGroupStyle}>
+                <label 
+                  style={labelStyle}
+                  title="What fraction of your starting capital is taxable profit?&#10;For example, 0.40 means 40% of the balance is subject to capital gains tax upon withdrawal. The Reverse Solver uses this ratio to calculate the tax burden on your target capital."
+                >
+                  Initial Profit Percentage (Decimal) ℹ️
+                </label>
+                <input type="number" name="initial_profit_percentage" value={params.initial_profit_percentage} onChange={handleChange} step="0.01" max="1" min="0" style={inputStyle} />
+              </div>
               <div style={inputGroupStyle}><label style={labelStyle}>Yearly Spending (Post-Tax) (€)</label><input type="number" name="yearly_spending" value={params.yearly_spending} onChange={handleChange} style={inputStyle} /></div>
               <div style={inputGroupStyle}><label style={labelStyle}>Inflation Rate (Decimal)</label><input type="number" name="inflation_percentage" value={params.inflation_percentage} onChange={handleChange} step="0.01" style={inputStyle} /></div>
               
@@ -439,33 +456,41 @@ export default function App() {
                   
                   {params.use_guyton_klinger && (
                     <div style={{ paddingLeft: '24px' }}>
-                      <p style={{ fontSize: '12px', color: '#92400e', margin: '0 0 12px 0' }}>Adjusts your spending structurally based on portfolio health, independent of macro market trends. Cuts spending if withdrawals get too high, and optionally raises it if withdrawals fall too low.</p>
+                      <p style={{ fontSize: '12px', color: '#92400e', margin: '0 0 12px 0', lineHeight: '1.4' }}>
+                        Adjusts your spending structurally based on portfolio health. If your current withdrawal rate exceeds your initial rate by the <strong>Upper Threshold</strong>, it triggers a spending cut. If it drops below the initial rate by the <strong>Lower Threshold</strong>, it triggers a raise.
+                      </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid #fde68a', paddingTop: '12px' }}>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                           <div style={{ flex: 1 }}>
-                            <label style={labelStyle}>Upper Withdrawal Threshold (+%)</label>
-                            <input type="number" name="gk_upper_threshold" value={params.gk_upper_threshold} onChange={handleChange} step="0.01" style={inputStyle} title="If current withdrawal rate exceeds the initial withdrawal rate by this %, trigger a cut (e.g., 0.20 for +20%)" />
+                            <label style={labelStyle}>Upper Threshold (Decimal)</label>
+                            <input type="number" name="gk_upper_threshold" value={params.gk_upper_threshold} onChange={handleChange} step="0.01" style={inputStyle} />
                           </div>
                           <div style={{ flex: 1 }}>
-                            <label style={labelStyle}>Spending Cut Rate</label>
-                            <input type="number" name="gk_cut_rate" value={params.gk_cut_rate} onChange={handleChange} step="0.01" style={inputStyle} title="How much to reduce spending by (e.g., 0.10 for 10%)" />
+                            <label style={labelStyle}>Spending Cut Rate (Decimal)</label>
+                            <input type="number" name="gk_cut_rate" value={params.gk_cut_rate} onChange={handleChange} step="0.01" style={inputStyle} />
                           </div>
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', marginBottom: params.gk_allow_raises ? '4px' : '0' }}>
                           <input type="checkbox" id="gk_allow_raises" name="gk_allow_raises" checked={params.gk_allow_raises || false} onChange={handleChange} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} />
-                          <label htmlFor="gk_allow_raises" style={{ fontSize: '13px', fontWeight: 'bold', color: '#92400e', cursor: 'pointer', userSelect: 'none' }}>Enable Prosperity Rule (Raises)</label>
+                          <label 
+                            htmlFor="gk_allow_raises" 
+                            style={{ fontSize: '13px', fontWeight: 'bold', color: '#92400e', cursor: 'pointer', userSelect: 'none' }}
+                            title="Allows your spending to increase when the portfolio performs exceptionally well, keeping your withdrawal rate from dropping unnecessarily low."
+                          >
+                            Enable Prosperity Rule (Raises) ℹ️
+                          </label>
                         </div>
 
                         {params.gk_allow_raises && (
                           <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                             <div style={{ flex: 1 }}>
-                              <label style={labelStyle}>Lower Withdrawal Threshold (-%)</label>
-                              <input type="number" name="gk_lower_threshold" value={params.gk_lower_threshold} onChange={handleChange} step="0.01" style={inputStyle} title="If current withdrawal rate drops below the initial withdrawal rate by this %, trigger a raise (e.g., 0.20 for -20%)" />
+                              <label style={labelStyle}>Lower Threshold (Decimal)</label>
+                              <input type="number" name="gk_lower_threshold" value={params.gk_lower_threshold} onChange={handleChange} step="0.01" style={inputStyle} />
                             </div>
                             <div style={{ flex: 1 }}>
-                              <label style={labelStyle}>Spending Raise Rate</label>
-                              <input type="number" name="gk_raise_rate" value={params.gk_raise_rate} onChange={handleChange} step="0.01" style={inputStyle} title="How much to increase spending by (e.g., 0.10 for 10%)" />
+                              <label style={labelStyle}>Spending Raise Rate (Decimal)</label>
+                              <input type="number" name="gk_raise_rate" value={params.gk_raise_rate} onChange={handleChange} step="0.01" style={inputStyle} />
                             </div>
                           </div>
                         )}
@@ -474,7 +499,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Option 3: Proportional Attenuator */}
+               {/* Option 3: Proportional Attenuator */}
                 <div style={{ 
                   backgroundColor: params.use_proportional_attenuator ? '#fef3c7' : '#fff', 
                   padding: '12px', 
@@ -489,7 +514,9 @@ export default function App() {
                   
                   {params.use_proportional_attenuator && (
                     <div style={{ paddingLeft: '24px' }}>
-                      <p style={{ fontSize: '12px', color: '#92400e', margin: '0 0 12px 0' }}>Smoothly dims your spending when the market falls below its 5-year average. Recovers instantly when the market recovers.</p>
+                      <p style={{ fontSize: '12px', color: '#92400e', margin: '0 0 12px 0', lineHeight: '1.4' }}>
+                        Smoothly dims your spending when the market falls below its 5-year average, recovering instantly when the market bounces back. The <strong>Maximum Dimming Floor</strong> sets the hard limit on this reduction—a value of 0.50 ensures your spending will never be cut by more than 50%, regardless of market severity.
+                      </p>
                       <div style={{ display: 'flex', gap: '10px', borderTop: '1px solid #fde68a', paddingTop: '12px', alignItems: 'flex-end' }}>
                         <div style={{ flex: 1 }}>
                           <label style={labelStyle}>Maximum Dimming Floor (Decimal)</label>
@@ -499,6 +526,7 @@ export default function App() {
                     </div>
                   )}
                 </div>
+
               </div>
 
               {/* --- CASH BUFFER MASTER CONTAINER --- */}
@@ -522,8 +550,12 @@ export default function App() {
 
                   {params.use_cash_buffer && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid #fde68a', paddingTop: '12px' }}>
-                      <div><label style={labelStyle}>Initial Buffer Size (€)</label><input type="number" name="buffer_current_size" value={params.buffer_current_size} onChange={handleChange} style={inputStyle} /></div>
-                      <div><label style={labelStyle}>Steady-State Target Buffer (Months)</label><input type="number" name="buffer_target_months" value={params.buffer_target_months} onChange={handleChange} style={inputStyle} /></div>
+                      
+                      {/* INITIAL BUFFER ONLY */}
+                      <div>
+                        <label style={labelStyle}>Initial Buffer Size (€)</label>
+                        <input type="number" name="buffer_current_size" value={params.buffer_current_size} onChange={handleChange} style={inputStyle} />
+                      </div>
                       
                       {/* INSTRUCTIONAL BLOCK */}
                       <div style={{ fontSize: '13px', color: '#92400e', backgroundColor: '#fef3c7', padding: '10px 12px', borderRadius: '6px', marginBottom: '8px', borderLeft: '4px solid #fbbf24', lineHeight: '1.5' }}>
@@ -533,6 +565,9 @@ export default function App() {
                       {/* GLOBAL MODIFIER: Hysteresis */}
                       <div style={{ borderTop: '1px solid #fcd34d', paddingTop: '12px', paddingBottom: '4px', marginTop: '4px' }}>
                         <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#92400e', marginBottom: '8px' }}>Global Structural Protectors (Hysteresis)</div>
+                        <p style={{ fontSize: '12px', color: '#92400e', margin: '0 0 12px 0', lineHeight: '1.4' }}>
+                          These act as ultimate circuit breakers. If equities drop below the <strong>Critical Mass Floor</strong> (e.g., 0.20 for 20% of original value), the buffer stops refilling entirely to prevent death spirals. Equities must recover past the <strong>Replenish Threshold</strong> before refilling resumes.
+                        </p>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                           <div style={{ flex: 1 }}><label style={labelStyle}>Critical Mass Floor (Decimal)</label><input type="number" name="equity_critical_mass_floor" value={params.equity_critical_mass_floor} onChange={handleChange} step="0.01" min="0" max="1" style={inputStyle} /></div>
                           <div style={{ flex: 1 }}><label style={labelStyle}>Replenish Threshold (Decimal)</label><input type="number" name="equity_replenish_threshold" value={params.equity_replenish_threshold} onChange={handleChange} step="0.01" min="0" max="1" style={inputStyle} /></div>
@@ -550,7 +585,9 @@ export default function App() {
                         
                         {params.use_equity_glidepath && (
                           <div style={{ paddingLeft: '24px' }}>
-                            <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Activates at the very beginning of your timeline. Forces 100% of your early spending to come exclusively from cash, protecting your equities from initial market crashes. Hands off to Phase 2 when the time expires or cash runs out.</p>
+                            <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '12px', lineHeight: '1.4' }}>
+                              Activates at the very beginning of your timeline. Forces 100% of your early spending to come exclusively from cash, protecting your equities from initial market crashes. <strong>Note:</strong> If your Initial Buffer Size cannot fund the entire duration, Phase 1 will terminate early as soon as the cash runs out, handing over to Phase 2.
+                            </p>
                             <label style={labelStyle}>Glidepath Duration (Months)</label>
                             <input type="number" name="glidepath_months" value={params.glidepath_months || 60} onChange={handleChange} min="12" max="240" style={inputStyle} />
                           </div>
@@ -560,6 +597,13 @@ export default function App() {
                       {/* PHASE 2: STEADY-STATE ROUTING */}
                       <div style={{ borderTop: '2px solid #fcd34d', paddingTop: '16px', marginTop: '16px' }}>
                         <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#b45309', marginBottom: '16px' }}>Phase 2: Steady-State Strategy</div>
+
+                        {/* MOVED TARGET BUFFER */}
+                        <div style={{ marginBottom: '20px', padding: '0 4px' }}>
+                          <label style={labelStyle}>Steady-State Target Buffer (Months)</label>
+                          <p style={{ fontSize: '12px', color: '#92400e', margin: '0 0 8px 0', lineHeight: '1.4' }}>The ideal size of your cash reserve during normal operations. The inflow rules below will attempt to fill the buffer up to this level, and outflow rules will drain it down.</p>
+                          <input type="number" name="buffer_target_months" value={params.buffer_target_months} onChange={handleChange} style={inputStyle} />
+                        </div>
 
                         {/* --- INFLOW RULES --- */}
                         <div style={{ marginBottom: '16px', backgroundColor: '#fffbeb', padding: '12px', borderRadius: '6px', border: '1px solid #fde68a' }}>
@@ -574,10 +618,14 @@ export default function App() {
                             </div>
                             {params.use_baseline_volatility && (
                               <div style={{ paddingLeft: '24px' }}>
-                                <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Refills the buffer when the market is up by a specific percentage, and uses the buffer when the market drops below a threshold.</p>
+                                <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '12px', lineHeight: '1.4' }}>
+                                  • <strong>Depletion Threshold:</strong> Use cash if market return drops below this decimal (e.g., 0.0 for negative returns).<br/>
+                                  • <strong>Replenish Threshold:</strong> Sell equities to refill cash if market return exceeds this decimal.<br/>
+                                  • <strong>Refill Throttle:</strong> Max months of expenses transferred per refill to mitigate tax hits.
+                                </p>
                                 <div style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'flex-end' }}>
-                                  <div style={{ flex: 1 }}><label style={labelStyle}>Depletion Threshold</label><input type="number" name="buffer_depletion_threshold" value={params.buffer_depletion_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
-                                  <div style={{ flex: 1 }}><label style={labelStyle}>Replenish Threshold</label><input type="number" name="buffer_replenishment_threshold" value={params.buffer_replenishment_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
+                                  <div style={{ flex: 1 }}><label style={labelStyle}>Depletion Threshold (Dec)</label><input type="number" name="buffer_depletion_threshold" value={params.buffer_depletion_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
+                                  <div style={{ flex: 1 }}><label style={labelStyle}>Replenish Threshold (Dec)</label><input type="number" name="buffer_replenishment_threshold" value={params.buffer_replenishment_threshold} onChange={handleChange} step="0.01" style={inputStyle} /></div>
                                 </div>
                                 <div>
                                   <label style={labelStyle}>Refill Throttle (Max Months/Transfer)</label>
@@ -594,7 +642,7 @@ export default function App() {
                             </div>
                             {params.use_high_water_mark && (
                               <div style={{ paddingLeft: '24px', paddingTop: '8px' }}>
-                                 <p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>Tracks the all-time high of the portfolio. Equities are only sold if the current value is within a certain distance of the peak.</p>
+                                 <p style={{ fontSize: '12px', color: '#92400e', margin: 0, lineHeight: '1.4' }}>Tracks the all-time high of the portfolio. Equities are only sold to refill the buffer if the current portfolio value is within a strict distance of its historical peak.</p>
                               </div>
                             )}
                           </div>
@@ -613,7 +661,7 @@ export default function App() {
                             </div>
                             {params.use_trend_guardrail && (
                               <div style={{ paddingLeft: '24px' }}>
-                                <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Monitors a fast moving average. If the market drops below the SMA, it intercepts withdrawals and drains cash to protect equities.</p>
+                                <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '12px', lineHeight: '1.4' }}>Monitors a fast moving average. If the market drops below this SMA, it intercepts withdrawals and drains cash to protect equities. The <strong>Fast SMA Window</strong> defines the number of months to average (e.g., 10 or 12).</p>
                                 <div><label style={labelStyle}>Fast SMA Window (Months)</label><input type="number" name="trend_sma_months" value={params.trend_sma_months || 12} onChange={handleChange} min="1" max="120" style={inputStyle} /></div>
                               </div>
                             )}
@@ -626,7 +674,7 @@ export default function App() {
                             </div>
                             {params.use_proportional_withdrawal && (
                               <div style={{ paddingLeft: '24px', paddingTop: '8px' }}>
-                                 <p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>Splits your monthly withdrawals elastically between equities and cash based on multiple regime indicators (Clear Skies, Correction, Crash).</p>
+                                 <p style={{ fontSize: '12px', color: '#92400e', margin: 0, lineHeight: '1.4' }}>Splits your monthly withdrawals elastically between equities and cash based on multiple regime indicators (Clear Skies, Correction, Crash) rather than an all-or-nothing binary toggle.</p>
                               </div>
                             )}
                           </div>
@@ -645,7 +693,7 @@ export default function App() {
                             </div>
                             {params.use_dynamic_buffer && (
                               <div style={{ paddingLeft: '24px' }}>
-                                <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '8px' }}>Continuously expands or shrinks the target size of your cash buffer based on macro valuation trends to naturally buy low and sell high.</p>
+                                <p style={{ fontSize: '12px', color: '#92400e', marginTop: 0, marginBottom: '12px', lineHeight: '1.4' }}>Continuously expands or shrinks the target size of your cash buffer based on macro valuation trends to naturally buy low and sell high. The <strong>Slow SMA Window</strong> defines the long-term trendline (e.g., 60 months) used to determine if the market is overvalued or undervalued.</p>
                                 <div><label style={labelStyle}>Slow SMA Window (Months)</label><input type="number" name="valuation_slow_sma_months" value={params.valuation_slow_sma_months || 60} onChange={handleChange} min="12" max="240" style={inputStyle} /></div>
                               </div>
                             )}
@@ -658,13 +706,44 @@ export default function App() {
                 </div>
               </div>
 
+             {/* --- SECTION DIVIDER: FUTURE TIMELINE --- */}
+              <div style={{ marginTop: '32px', marginBottom: '16px', borderBottom: '1px solid #cbd5e1', paddingBottom: '12px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#0f172a', margin: '0 0 4px 0' }}>
+                  🗺️ Future Trajectory & Environment
+                </h3>
+                <p style={{ fontSize: '13px', color: '#64748b', margin: 0, lineHeight: '1.4' }}>
+                  Parameterize your future life. Define the macroeconomic baselines and plot specific structural events—like windfalls, relocations, and new pension streams—along your timeline.
+                </p>
+              </div>
+
               <div style={{ ...inputGroupStyle, backgroundColor: '#f9fafb', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-                <label style={labelStyle}>Compare Tax Residencies (Cap Gains)</label>
+                <label 
+                  style={labelStyle} 
+                  title="Select tax regimes to run in parallel.&#10;Each regime applies its specific country-level capital gains and pension tax rules, brackets, and exemptions to your portfolio withdrawals."
+                >
+                  Compare Tax Residencies ℹ️
+                </label>
+                {dynamicModels.capGainsRegimes.map((id) => (<div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}><input type="checkbox" id={`tax-${id}`} checked={params.tax_residencies.includes(id)} onChange={() => handleArrayToggle('tax_residencies', id)} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} /><label htmlFor={`tax-${id}`} style={{ fontSize: '14px', cursor: 'pointer', userSelect: 'none' }}>{id.replace(/_/g, ' ')}</label></div>))}
+              </div>
+
+
+              <div style={{ ...inputGroupStyle, backgroundColor: '#f9fafb', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                <label 
+                  style={labelStyle} 
+                  title="Select tax regimes to run in parallel.&#10;Each regime applies its specific country-level capital gains and pension tax rules, brackets, and exemptions to your portfolio withdrawals."
+                >
+                  Compare Tax Residencies ℹ️
+                </label>
                 {dynamicModels.capGainsRegimes.map((id) => (<div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}><input type="checkbox" id={`tax-${id}`} checked={params.tax_residencies.includes(id)} onChange={() => handleArrayToggle('tax_residencies', id)} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} /><label htmlFor={`tax-${id}`} style={{ fontSize: '14px', cursor: 'pointer', userSelect: 'none' }}>{id.replace(/_/g, ' ')}</label></div>))}
               </div>
 
               <div style={{ ...inputGroupStyle, backgroundColor: '#f9fafb', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-                <label style={labelStyle}>Compare Growth Models</label>
+                <label 
+                  style={labelStyle} 
+                  title="Select how market returns are simulated:&#10;• Linear: A steady, fixed annual return.&#10;• Stochastic: Random paths using volatility (shows Median, Best 10%, and Worst 10% outcomes).&#10;• Historical: Replays actual market crash and bull run sequences."
+                >
+                  Compare Growth Models ℹ️
+                </label>
                 {Object.entries(dynamicModels.uiModels).map(([id, name]) => (<div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}><input type="checkbox" id={id} checked={params.growth_models.includes(id)} onChange={() => handleArrayToggle('growth_models', id)} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} /><label htmlFor={id} style={{ fontSize: '14px', cursor: 'pointer', userSelect: 'none' }}>{name}</label></div>))}
                 
                 {params.growth_models.includes('linear') && (
@@ -848,7 +927,7 @@ export default function App() {
                   onClick={() => setAnalysisMode('reverse')}
                   style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: analysisMode === 'reverse' ? '#fff' : 'transparent', color: analysisMode === 'reverse' ? '#0f172a' : '#64748b', boxShadow: analysisMode === 'reverse' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.2s' }}
                 >
-                  🎯 Reverse Solver
+                  🎯 Find Required Capital
                 </button>
               </div>
             </div>
@@ -857,11 +936,11 @@ export default function App() {
             {analysisMode === 'forward' && (
               <>
                 {/* Legend Box */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', backgroundColor: '#fff', padding: '10px 16px', borderRadius: '6px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)' }}>
+                <div style={{ marginBottom: '20px', width: '100%', boxSizing: 'border-box' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', backgroundColor: '#fff', padding: '12px 20px', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
                       <strong style={{ color: '#6b7280', textTransform: 'uppercase', fontSize: '10px', width: '130px', flexShrink: 0 }}>Tax Regime (Style)</strong>
-                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', flex: 1 }}>
                         {dynamicModels.capGainsRegimes.map(tax => (
                           <div key={tax} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#4b5563" strokeWidth="2" strokeDasharray={dynamicModels.taxStyles[tax]} /></svg>
@@ -870,10 +949,10 @@ export default function App() {
                         ))}
                       </div>
                     </div>
-                    <div style={{ height: '1px', backgroundColor: '#e5e7eb', width: '100%' }}></div>
+                    <div style={{ height: '1px', backgroundColor: '#e2e8f0', width: '100%' }}></div>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
                       <strong style={{ color: '#6b7280', textTransform: 'uppercase', fontSize: '10px', width: '130px', flexShrink: 0 }}>Growth Model (Color)</strong>
-                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', flex: 1 }}>
                         {activeModels.map(model => (
                           <div key={model} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <div style={{ width: '12px', height: '12px', backgroundColor: dynamicModels.displayColors[model] || '#000', borderRadius: '2px' }}></div>
@@ -1037,10 +1116,10 @@ export default function App() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <h3 style={{ margin: '0 0 4px 0', color: '#0369a1', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                       🔄 Reverse Solver: Find Required Capital
+                       🔄 Find Required Capital: Reverse solver
                     </h3>
                     <p style={{ margin: 0, fontSize: '13px', color: '#0c4a6e', maxWidth: '600px', lineHeight: '1.4' }}>
-                      Calculates the exact <strong>Initial Investment</strong> needed to survive the timeline you configured on the left, while ensuring your real monthly spending never drops below your €{params.poverty_threshold}/mo poverty floor.
+                      Calculates the <strong>Initial Capital</strong> needed to survive the timeline you configured on the left, while ensuring your real monthly spending never drops below your €{params.poverty_threshold}/mo poverty floor.
                     </p>
                   </div>
                   <button 
@@ -1048,7 +1127,7 @@ export default function App() {
                     disabled={isTargeting}
                     style={{ backgroundColor: isTargeting ? '#94a3b8' : '#0284c7', color: '#fff', padding: '12px 24px', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: isTargeting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', boxShadow: '0 4px 6px -1px rgba(2, 132, 199, 0.2)' }}
                   >
-                    {isTargeting ? '⚙️ Solving...' : 'Solve for Initial Capital'}
+                    {isTargeting ? '⚙️ Solving...' : 'Calculate'}
                   </button>
                 </div>
                 
