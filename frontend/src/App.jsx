@@ -1073,8 +1073,8 @@ export default function App() {
                             <td style={{ padding: '12px 16px' }}>
                               {stat.finalValue > 0 
                                 ? (stat.povertyMonth 
-                                    ? <span style={{ color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Poverty {formatMonthYear(stat.povertyMonth)}</span>
-                                    : <span style={{ color: '#166534', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Sustainable</span>)
+                                  ? <span style={{ color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Poverty {formatMonthYear(stat.povertyMonth)}</span>
+                                  : <span style={{ color: '#166534', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Sustainable</span>)
                                 : stat.isBridgedByPension
                                   ? <span style={{ color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Unsustainable {formatMonthYear((stat.depletionMonth || 1))}</span>
                                   : <span style={{ color: '#991b1b', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Depleted {formatMonthYear((stat.depletionMonth || 1))}</span>
@@ -1122,39 +1122,75 @@ export default function App() {
                 </div>
                 
                 {targetResults && (
-                  <div style={{ backgroundColor: '#fff', border: '1px solid #bae6fd', borderRadius: '6px', overflow: 'hidden' }}>
-                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                      <thead style={{ backgroundColor: '#f0f9ff', borderBottom: '1px solid #bae6fd' }}>
+                  <div style={{ backgroundColor: '#fff', border: '1px solid #bae6fd', borderRadius: '6px', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                      <thead style={{ backgroundColor: '#f0f9ff' }}>
                         <tr>
+                          <th colSpan="2" style={{ padding: '8px 12px', borderBottom: '1px solid #bae6fd', color: '#0369a1', fontSize: '12px', textTransform: 'uppercase' }}>Scenario Baseline</th>
+                          <th colSpan="3" style={{ padding: '8px 12px', textAlign: 'center', borderBottom: '1px solid #bae6fd', borderLeft: '1px solid #e0f2fe', color: '#0369a1', fontSize: '12px', textTransform: 'uppercase' }}>Required Target Allocation</th>
+                          <th colSpan="2" style={{ padding: '8px 12px', textAlign: 'center', borderBottom: '1px solid #bae6fd', borderLeft: '1px solid #e0f2fe', color: '#0369a1', fontSize: '12px', textTransform: 'uppercase' }}>Active System Guardrails</th>
+                          <th colSpan="5" style={{ padding: '8px 12px', textAlign: 'center', borderBottom: '1px solid #bae6fd', borderLeft: '1px solid #e0f2fe', color: '#0369a1', fontSize: '12px', textTransform: 'uppercase' }}>Target Budget Delivered (Years)</th>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid #bae6fd' }}>
                           <th style={{ padding: '10px 12px' }}>Growth Model</th>
-                          <th style={{ padding: '10px 12px' }}>Tax</th>
-                          <th style={{ padding: '10px 12px' }}>Active Buffer Protocol</th>
-                          <th style={{ padding: '10px 12px' }}>Active Spending Rule</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>100% Full</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>95-99% (Micro)</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>85-94% (Noticeable)</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>&lt;85% (Deep)</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center', color: '#9f1239' }}>Deepest Cut</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'right' }}>Min Starting Capital</th>
+                          <th style={{ padding: '10px 12px' }}>Tax Residency</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'right', borderLeft: '1px solid #e0f2fe' }}>In Equities</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'right' }}>In Cash Buffer</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'right', color: '#0284c7' }}>Total Target Capital</th>
+                          <th style={{ padding: '10px 12px', borderLeft: '1px solid #e0f2fe' }}>Cash Buffer Rules</th>
+                          <th style={{ padding: '10px 12px' }}>Spending Rules</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', borderLeft: '1px solid #e0f2fe' }}>100% (No Cuts)</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>95-99%</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>85-94%</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>&lt;85%</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', color: '#9f1239' }}>Max Cut</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {targetResults.map((res, idx) => (
-                          <tr key={idx} style={{ borderBottom: idx === targetResults.length - 1 ? 'none' : '1px solid #e0f2fe' }}>
-                            <td style={{ padding: '10px 12px', fontWeight: '500' }}>{dynamicModels.displayNames[res.model] || res.model}</td>
-                            <td style={{ padding: '10px 12px' }}>{res.tax.replace(/_/g, ' ')}</td>
-                            <td style={{ padding: '10px 12px', color: '#b45309' }}>{res.buffer_protocol}</td>
-                            <td style={{ padding: '10px 12px', color: '#4338ca' }}>{res.spending_protocol}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#16a34a' }}>{res.bins["100%"]} yrs</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', color: '#84cc16' }}>{res.bins["95-99%"]} yrs</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', color: '#f59e0b' }}>{res.bins["85-94%"]} yrs</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', color: '#dc2626' }}>{res.bins["<85%"]} yrs</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 'bold', color: '#9f1239' }}>{res.deepest_cut}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 'bold', color: '#0369a1', fontSize: '14px' }}>
-                              {new Intl.NumberFormat('fi-FI', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(res.required_capital)}
-                            </td>
-                          </tr>
-                        ))}
+                        {targetResults.map((res, idx) => {
+                          const totalOrig = (parseFloat(params.initial_investment) || 0) + (parseFloat(params.buffer_current_size) || 0);
+                          const bufRatio = (params.use_cash_buffer && totalOrig > 0) ? ((parseFloat(params.buffer_current_size) || 0) / totalOrig) : 0;
+                          
+                          const bufferVal = res.required_capital * bufRatio;
+                          const equityVal = res.required_capital - bufferVal;
+
+                          return (
+                            <tr key={idx} style={{ borderBottom: idx === targetResults.length - 1 ? 'none' : '1px solid #e0f2fe', backgroundColor: idx % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                              <td style={{ padding: '12px', fontWeight: '500' }}>{dynamicModels.displayNames[res.model] || res.model}</td>
+                              <td style={{ padding: '12px' }}>{res.tax.replace(/_/g, ' ')}</td>
+                              <td style={{ padding: '12px', textAlign: 'right', color: '#475569', borderLeft: '1px solid #f0f9ff' }}>
+                                {formatEur(equityVal)}
+                              </td>
+                              <td style={{ padding: '12px', textAlign: 'right', color: '#059669', fontWeight: bufferVal > 0 ? '500' : 'normal' }}>
+                                {formatEur(bufferVal)}
+                              </td>
+                              <td style={{ padding: '12px', textAlign: 'right', fontWeight: 'bold', color: '#0369a1', fontSize: '14px', backgroundColor: '#f0f9ff' }}>
+                                {formatEur(res.required_capital)}
+                              </td>
+                              <td style={{ padding: '12px', color: '#b45309', borderLeft: '1px solid #f0f9ff', fontSize: '12px' }}>
+                                {res.buffer_protocol}
+                              </td>
+                              <td style={{ padding: '12px', color: '#4338ca', fontSize: '12px' }}>
+                                {res.spending_protocol}
+                              </td>
+                              <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', color: '#16a34a', borderLeft: '1px solid #f0f9ff' }}>
+                                {res.bins["100%"]}
+                              </td>
+                              <td style={{ padding: '12px', textAlign: 'center', color: '#84cc16' }}>
+                                {res.bins["95-99%"]}
+                              </td>
+                              <td style={{ padding: '12px', textAlign: 'center', color: '#f59e0b' }}>
+                                {res.bins["85-94%"]}
+                              </td>
+                              <td style={{ padding: '12px', textAlign: 'center', color: '#dc2626' }}>
+                                {res.bins["<85%"]}
+                              </td>
+                              <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', color: '#9f1239' }}>
+                                {res.deepest_cut}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

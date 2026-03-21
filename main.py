@@ -250,27 +250,37 @@ def find_minimum_capital(params: dict = Body(...)):
                 deepest_cut_str = f"-{max_cut_pct * 100:.1f}%" if max_cut_pct > 0 else "0.0%"
 
                 spend_proto = "Constant (No Guardrails)"
-                if params.get('use_guyton_klinger'): spend_proto = "Guyton-Klinger"
-                elif params.get('use_proportional_attenuator'): spend_proto = "Elastic Dimmer"
-                elif params.get('enable_low_season_spend'): spend_proto = "Austerity Cut"
-                
+                if params.get('use_guyton_klinger'): 
+                    spend_proto = "Guyton-Klinger Guardrails"
+                elif params.get('use_proportional_attenuator'): 
+                    spend_proto = "Proportional Attenuator"
+                elif params.get('enable_low_season_spend'): 
+                    spend_proto = "Low Season Austerity"
+                else:
+                    spend_proto = "Constant (No Guardrails)"
+
                 # --- SYNCHRONIZED BUFFER PROTOCOL LABELS ---
                 buf_proto = "None"
                 if params.get('use_cash_buffer'):
-                    phase1 = "Phase 1: Glidepath" if params.get('use_equity_glidepath') else ""
+                    phase1 = "Glidepath" if params.get('use_equity_glidepath') else ""
                     
                     phase2_components = []
-                    if params.get('use_proportional_withdrawal'):
-                        phase2_components.append("5. Proportional Withdrawal")
-                    elif params.get('use_high_water_mark'):
-                        phase2_components.append("4. High-Water Mark")
-                    elif params.get('use_baseline_volatility'):
-                        phase2_components.append("1. Baseline Volatility")
+                    
+                    # Inflow Rules
+                    if params.get('use_baseline_volatility'):
+                        phase2_components.append("Baseline Volatility")
+                    if params.get('use_high_water_mark'):
+                        phase2_components.append("High-Water Mark")
                         
+                    # Outflow Rules
                     if params.get('use_trend_guardrail'):
-                        phase2_components.append("2. SMA Guardrail")
+                        phase2_components.append("SMA Guardrail")
+                    if params.get('use_proportional_withdrawal'):
+                        phase2_components.append("Proportional Withdrawal")
+                        
+                    # Modifiers
                     if params.get('use_dynamic_buffer'):
-                        phase2_components.append("3. Dynamic Sizing")
+                        phase2_components.append("Dynamic Sizing")
                         
                     phase2_str = " + ".join(phase2_components)
                     
@@ -281,7 +291,7 @@ def find_minimum_capital(params: dict = Body(...)):
                     elif phase2_str:
                         buf_proto = phase2_str
                     else:
-                        buf_proto = "Active (No Base Strategy)"
+                        buf_proto = "Active (No Rules Selected)"
                         
                 results.append({
                     "model": model,
