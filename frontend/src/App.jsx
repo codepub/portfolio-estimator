@@ -726,17 +726,6 @@ export default function App() {
                 {dynamicModels.capGainsRegimes.map((id) => (<div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}><input type="checkbox" id={`tax-${id}`} checked={params.tax_residencies.includes(id)} onChange={() => handleArrayToggle('tax_residencies', id)} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} /><label htmlFor={`tax-${id}`} style={{ fontSize: '14px', cursor: 'pointer', userSelect: 'none' }}>{id.replace(/_/g, ' ')}</label></div>))}
               </div>
 
-
-              <div style={{ ...inputGroupStyle, backgroundColor: '#f9fafb', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-                <label 
-                  style={labelStyle} 
-                  title="Select tax regimes to run in parallel.&#10;Each regime applies its specific country-level capital gains and pension tax rules, brackets, and exemptions to your portfolio withdrawals."
-                >
-                  Compare Tax Residencies ℹ️
-                </label>
-                {dynamicModels.capGainsRegimes.map((id) => (<div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}><input type="checkbox" id={`tax-${id}`} checked={params.tax_residencies.includes(id)} onChange={() => handleArrayToggle('tax_residencies', id)} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} /><label htmlFor={`tax-${id}`} style={{ fontSize: '14px', cursor: 'pointer', userSelect: 'none' }}>{id.replace(/_/g, ' ')}</label></div>))}
-              </div>
-
               <div style={{ ...inputGroupStyle, backgroundColor: '#f9fafb', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
                 <label 
                   style={labelStyle} 
