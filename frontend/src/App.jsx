@@ -391,7 +391,7 @@ export default function App() {
               <div style={inputGroupStyle}>
                 <label 
                   style={labelStyle}
-                  title="What fraction of your starting capital is taxable profit?&#10;For example, 0.40 means 40% of the balance is subject to capital gains tax upon withdrawal. The Reverse Solver uses this ratio to calculate the tax burden on your target capital."
+                  title="What fraction of your starting capital is taxable profit?&#10;For example, 0.40 means 40% of the balance is subject to capital gains tax upon withdrawal. Find Required Capital function (The Reverse Solver) uses this ratio to calculate the tax burden on your target capital."
                 >
                   Initial Profit Percentage (Decimal) ℹ️
                 </label>
