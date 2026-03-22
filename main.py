@@ -108,6 +108,7 @@ class SimulationParams(BaseModel):
     gk_allow_raises: bool = True
     use_proportional_attenuator: bool = False
     attenuator_max_cut: float = 0.50
+    use_baseline_volatility: bool = False
 
 @app.post("/find_min_capital")
 def find_minimum_capital(params: dict = Body(...)):
@@ -127,7 +128,7 @@ def find_minimum_capital(params: dict = Body(...)):
     # 1. Pre-generate and freeze timelines for fair binary searching
     frozen_timelines = {}
     if 'stochastic' in params.get('growth_models', []):
-        random.seed(600) # Lock universe for monotonic search
+        random.seed(10000) # Lock universe for monotonic search
         vol = params.get('stochastic_volatility', 0.13)
         if params.get('stochastic_engine') == 'heston':
             frozen_timelines['stochastic'] = [simulator._generate_heston_returns(params.get('linear_rate', 0.07), vol, total_months) for _ in range(iterations)]
@@ -215,18 +216,27 @@ def find_minimum_capital(params: dict = Body(...)):
                         res = future.result()
                         
                         annual_real_spends = []
+                        min_portfolio_val = float('inf') # <--- NEW TRACKER
+                        
                         for year in range(1, (total_months // 12) + 1):
                             start_m = (year - 1) * 12 + 1
                             end_m = year * 12
                             real_annual_sum = sum(res[m]['spend'] / ((1 + monthly_inflation_rate) ** (m - 1)) for m in range(start_m, end_m + 1))
                             annual_real_spends.append(real_annual_sum)
+                            
+                            # Track the lowest the portfolio ever goes # <--- NEW TRACKER
+                            lowest_in_year = min(res[m]['value'] for m in range(start_m, end_m + 1))
+                            if lowest_in_year < min_portfolio_val:
+                                min_portfolio_val = lowest_in_year
                                 
                         final_wealth = res[total_months]['value']
                         min_spend = min(annual_real_spends)
                         
-                        if final_wealth > 0 and min_spend >= poverty_threshold_annual:
+                        is_safe = final_wealth > 0 and min_spend >= poverty_threshold_annual
+                        
+                        if is_safe:
                             surviving_paths += 1
-                            
+
                         all_path_data.append({
                             'wealth': final_wealth,
                             'min_spend': min_spend,
@@ -235,10 +245,6 @@ def find_minimum_capital(params: dict = Body(...)):
                     
                     survival_rate = surviving_paths / total_paths
                     
-                    # --- THE DIAGNOSTIC LOG ---
-                    if model == 'Stochastic (Worst 10%)':
-                        print(f"Test Cap: €{test_cap:,.0f} | Survival Rate: {survival_rate*100:.1f}% (Target: {target_survival_rate*100:.1f}%)")
-
                     # Adjust the search window based on the overall survival batch rate
                     if survival_rate >= target_survival_rate:
                         best_safe_capital = test_cap

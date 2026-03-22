@@ -1,6 +1,7 @@
 import random
 import math
 from datetime import datetime
+import copy
 
 class PortfolioSimulator:
     def __init__(self, taxes_config, indices_config):
@@ -677,17 +678,41 @@ class PortfolioSimulator:
                     engine_choice = params.get('stochastic_engine', 'gbm')
                     annual_rate = params.get('linear_rate', 0.07)
                     annual_vol = params.get('stochastic_volatility', 0.13)
+                    
+                    # Pull poverty variables for the strict sort
+                    monthly_inflation_rate = (1 + params.get('inflation_percentage', 0.02)) ** (1/12) - 1
+                    poverty_threshold_annual = params.get('poverty_threshold', 600.0) * 12
 
                     for _ in range(iterations):
                         if engine_choice == 'heston':
                             stoch_rates = self._generate_heston_returns(annual_rate, annual_vol, total_months)
                         else:
                             stoch_rates = self._generate_gbm_returns(annual_rate, annual_vol, total_months)
-                            
-                        run_result = self._run_single_timeline(params, stoch_rates, tax_res, start_year, start_month, total_months)
+
+                        safe_params = copy.deepcopy(params)                              
+                        run_result = self._run_single_timeline(safe_params, stoch_rates, tax_res, start_year, start_month, total_months)
                         all_runs.append(run_result)
-                    
-                    all_runs.sort(key=lambda run: run[total_months]['value'])
+
+                    # --- NEW STRICT SORTING LOGIC ---
+                    def get_sort_key(run):
+                        annual_real_spends = []
+                        for year in range(1, (total_months // 12) + 1):
+                            start_m = (year - 1) * 12 + 1
+                            end_m = year * 12
+                            real_annual_sum = sum(run[m]['spend'] / ((1 + monthly_inflation_rate) ** (m - 1)) for m in range(start_m, end_m + 1))
+                            annual_real_spends.append(real_annual_sum)
+                        
+                        min_spend = min(annual_real_spends) if annual_real_spends else 0
+                        final_wealth = run[total_months]['value']
+                        
+                        is_safe = final_wealth > 0 and min_spend >= poverty_threshold_annual
+                        
+                        # Primary sort: Failed paths (0) sort below Safe paths (1).
+                        # Secondary sort: Within each group, sort by final wealth.
+                        return (1 if is_safe else 0, final_wealth)
+
+                    all_runs.sort(key=get_sort_key)
+                    # --------------------------------
 
                     p10_run = all_runs[int(iterations * 0.10)]
                     p50_run = all_runs[int(iterations * 0.50)]
