@@ -97,7 +97,8 @@ class SimulationParams(BaseModel):
     valuation_slow_sma_months: int = 60
     use_high_water_mark: bool = False
     use_proportional_withdrawal: bool = False
-    throttle_multiplier: int = 3
+    use_attenuator_wr_override: bool = False
+    attenuator_wr_override_threshold: float = 0.04
     equity_critical_mass_floor: float = 0.20
     equity_replenish_threshold: float = 0.85      # Upgraded to 85%
     use_guyton_klinger: bool = False

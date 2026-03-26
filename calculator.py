@@ -391,13 +391,26 @@ class PortfolioSimulator:
             
             # --- SPENDING OVERLAYS: THE PROPORTIONAL ATTENUATOR (ELASTIC DIMMER) ---
             use_proportional_attenuator = params.get('use_proportional_attenuator', False)
-            attenuator_max_cut = params.get('attenuator_max_cut', 0.50) 
+            attenuator_max_cut = params.get('attenuator_max_cut', 0.50)
+            
+            # New configurable override parameters
+            use_attenuator_wr_override = params.get('use_attenuator_wr_override', False)
+            attenuator_wr_override_threshold = params.get('attenuator_wr_override_threshold', 0.04) 
             
             if use_proportional_attenuator and current_slow_sma > 0:
-                if synthetic_index < current_slow_sma:
-                    drawdown_pct = (current_slow_sma - synthetic_index) / current_slow_sma
-                    actual_cut = min(drawdown_pct, attenuator_max_cut)
-                    effective_monthly_spending *= (1.0 - actual_cut)
+                # Calculate current withdrawal rate to see if the portfolio is structurally safe
+                total_current_assets_for_wr = portfolio_value + current_buffer
+                current_annual_wr = (effective_monthly_spending * 12) / total_current_assets_for_wr if total_current_assets_for_wr > 0 else float('inf')
+                
+                # Circuit Breaker: Only apply the cut if the override is DISABLED, 
+                # OR if the override is enabled but our WR is dangerously above the threshold.
+                is_wr_safe = use_attenuator_wr_override and (current_annual_wr <= attenuator_wr_override_threshold)
+                
+                if not is_wr_safe:
+                    if synthetic_index < current_slow_sma:
+                        drawdown_pct = (current_slow_sma - synthetic_index) / current_slow_sma
+                        actual_cut = min(drawdown_pct, attenuator_max_cut)
+                        effective_monthly_spending *= (1.0 - actual_cut)
             # --------------------------------------------------------------
 
             is_austerity = False

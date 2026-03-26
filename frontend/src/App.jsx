@@ -515,13 +515,45 @@ export default function App() {
                   {params.use_proportional_attenuator && (
                     <div style={{ paddingLeft: '24px' }}>
                       <p style={{ fontSize: '12px', color: '#92400e', margin: '0 0 12px 0', lineHeight: '1.4' }}>
-                        Smoothly dims your spending when the market falls below its 5-year average, recovering instantly when the market bounces back. The <strong>Maximum Dimming Floor</strong> sets the hard limit on this reduction—a value of 0.50 ensures your spending will never be cut by more than 50%, regardless of market severity.
+                        Smoothly dims your spending when the market falls below its 5-year average, recovering instantly when the market bounces back. The <strong>Maximum Dimming Floor</strong> sets the hard limit on this reduction.
                       </p>
-                      <div style={{ display: 'flex', gap: '10px', borderTop: '1px solid #fde68a', paddingTop: '12px', alignItems: 'flex-end' }}>
-                        <div style={{ flex: 1 }}>
-                          <label style={labelStyle}>Maximum Dimming Floor (Decimal)</label>
-                          <input type="number" name="attenuator_max_cut" value={params.attenuator_max_cut || 0.50} onChange={handleChange} step="0.01" min="0" max="1" style={inputStyle} />
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid #fde68a', paddingTop: '12px' }}>
+                        
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                          <div style={{ flex: 1 }}>
+                            <label style={labelStyle}>Maximum Dimming Floor (Decimal)</label>
+                            <input type="number" name="attenuator_max_cut" value={params.attenuator_max_cut || 0.50} onChange={handleChange} step="0.01" min="0" max="1" style={inputStyle} />
+                          </div>
+                          <div style={{ flex: 1 }}></div> {/* Empty flex unit to keep input width consistent */}
                         </div>
+
+                        {/* --- NEW WR OVERRIDE CIRCUIT BREAKER --- */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', marginBottom: params.use_attenuator_wr_override ? '4px' : '0' }}>
+                          <input type="checkbox" id="use_attenuator_wr_override" name="use_attenuator_wr_override" checked={params.use_attenuator_wr_override || false} onChange={handleChange} style={{ margin: 0, width: '16px', height: '16px', cursor: 'pointer' }} />
+                          <label 
+                            htmlFor="use_attenuator_wr_override" 
+                            style={{ fontSize: '13px', fontWeight: 'bold', color: '#92400e', cursor: 'pointer', userSelect: 'none' }}
+                            title="Overrides market-based cuts if your absolute wealth is sufficient. Prevents unnecessary austerity in massive portfolios."
+                          >
+                            Enable Adequacy Circuit Breaker ℹ️
+                          </label>
+                        </div>
+
+                        {params.use_attenuator_wr_override && (
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                            <div style={{ flex: 1 }}>
+                              <label style={labelStyle}>Max Safe Withdrawal Rate (Decimal)</label>
+                              <input type="number" name="attenuator_wr_override_threshold" value={params.attenuator_wr_override_threshold || 0.04} onChange={handleChange} step="0.001" style={inputStyle} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                               <p style={{ fontSize: '11px', color: '#92400e', margin: 0, paddingBottom: '8px' }}>
+                                 E.g., 0.04 means cuts are ignored if you are pulling less than 4% of total assets.
+                               </p>
+                            </div>
+                          </div>
+                        )}
+
                       </div>
                     </div>
                   )}
