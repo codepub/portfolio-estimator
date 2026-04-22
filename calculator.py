@@ -288,6 +288,8 @@ class PortfolioSimulator:
             
         gk_spend_multiplier = 1.0
         # --------------------------------------
+        # NEW: Initialize the dynamic buffer target state
+        current_buffer_target_months = params.get('buffer_target_months', 36)
 
         # --- MEMORY ALLOCATION ---
         requires_slow_sma = use_dynamic_buffer or use_proportional_withdrawal or params.get('use_proportional_attenuator', False)
@@ -337,8 +339,8 @@ class PortfolioSimulator:
                 is_macro_downtrend = True
 
             # PHASE 2 (Option 3): Dynamic Buffer Sizing & Buy-the-Dip Protocol
-            target_buffer = current_monthly_spending * params.get('buffer_target_months', 36)
-            
+            target_buffer = current_monthly_spending * current_buffer_target_months
+
             if use_dynamic_buffer:
                 valuation_ratio = current_sma / current_slow_sma if current_slow_sma > 0 else 1.0
                 buffer_multiplier = max(0.5, min(1.5, valuation_ratio))
@@ -370,6 +372,12 @@ class PortfolioSimulator:
                 if current_absolute_month == event_abs_month:
                     inflated_new_spend = event['amount'] * ((1 + monthly_inflation_rate) ** (month - 1))
                     current_monthly_spending = inflated_new_spend / 12
+
+            # NEW: BUFFER TARGET CHANGES
+            for event in params.get('buffer_target_events', []):
+                event_abs_month = (event['year'] * 12) + event['month'] - 1
+                if current_absolute_month == event_abs_month:
+                    current_buffer_target_months = event['target_months']
 
             total_net_pension_this_month = 0
             for i, pension in enumerate(params['pensions']):

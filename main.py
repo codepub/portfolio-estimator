@@ -48,11 +48,17 @@ class CashEventInput(BaseModel):
     month: int
     target: str  # 'buffer' or 'investment'
 
-# --- NEW: LIFESTYLE SPENDING CHANGE ---
+# --- LIFESTYLE SPENDING CHANGE ---
 class SpendingEventInput(BaseModel):
     amount: float
     year: int
     month: int
+
+# --- BUFFER TARGET CHANGE ---
+class BufferTargetEventInput(BaseModel):
+    year: int
+    month: int
+    target_months: int
 
 class RelocationInput(BaseModel):
     year: int
@@ -70,6 +76,7 @@ class SimulationParams(BaseModel):
     cash_events: List[CashEventInput] = []
     relocations: List[RelocationInput] = []
     spending_events: List[SpendingEventInput] = []
+    buffer_target_events: List[BufferTargetEventInput] = []
     growth_models: List[str] = ["linear"]
     linear_rate: float = 0.07
     stochastic_engine: str = "gbm"

@@ -328,6 +328,10 @@ export default function App() {
     const updateSpendingEvent = (index, field, value) => { setParams(prev => { const newArr = [...prev.spending_events]; newArr[index][field] = parseFloat(value) || 0; return { ...prev, spending_events: newArr }; }); };
     const removeSpendingEvent = (index) => { setParams(prev => ({ ...prev, spending_events: prev.spending_events.filter((_, i) => i !== index) })); };
     
+    const addBufferTargetEvent = () => { setParams(prev => ({ ...prev, buffer_target_events: [...(prev.buffer_target_events || []), { target_months: 12, year: params.simulation_start_year + 5, month: 1 }] })); };
+    const updateBufferTargetEvent = (index, field, value) => { setParams(prev => { const newArr = [...prev.buffer_target_events]; newArr[index][field] = parseInt(value) || 0; return { ...prev, buffer_target_events: newArr }; }); };
+    const removeBufferTargetEvent = (index) => { setParams(prev => ({ ...prev, buffer_target_events: prev.buffer_target_events.filter((_, i) => i !== index) })); };
+
     const inputGroupStyle = { marginBottom: '16px' };
     const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '14px' };
     const inputStyle = { width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' };
@@ -916,6 +920,29 @@ export default function App() {
                 ))}
               </div>
 
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px', marginTop: '24px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <h4 style={{ margin: 0 }}>Buffer Target Changes</h4>
+                  <button onClick={addBufferTargetEvent} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', background: '#ccfbf1', border: 'none', padding: '6px 12px', borderRadius: '4px', color: '#0f766e', fontWeight: 'bold' }}><PlusCircle size={16} /> Add</button>
+                </div>
+                {(params.buffer_target_events || []).map((ev, index) => (
+                  <div key={`bte-${index}`} style={{ backgroundColor: '#f0fdfa', padding: '12px', borderRadius: '6px', border: '1px solid #99f6e4', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', borderBottom: '1px solid #99f6e4', paddingBottom: '4px' }}>
+                      <strong style={{ fontSize: '14px', color: '#0f766e' }}>Target Change {index + 1}</strong>
+                      <button onClick={() => removeBufferTargetEvent(index)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                    </div>
+                    <div style={{ ...inputGroupStyle, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                      <label style={labelStyle}>New Target Buffer (Months of Spend)</label>
+                      <input type="number" value={ev.target_months} onChange={(e) => updateBufferTargetEvent(index, 'target_months', e.target.value)} style={inputStyle} />
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                      <div style={{ flex: 1 }}><label style={labelStyle}>Year</label><input type="number" value={ev.year} onChange={(e) => updateBufferTargetEvent(index, 'year', e.target.value)} style={inputStyle} /></div>
+                      <div style={{ flex: 1 }}><label style={labelStyle}>Month</label><input type="number" value={ev.month} onChange={(e) => updateBufferTargetEvent(index, 'month', e.target.value)} min="1" max="12" style={inputStyle} /></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               {isLoading && ( <p style={{ color: '#0066cc', fontWeight: 'bold' }}>Simulating {params.growth_models.includes('stochastic') ? params.stochastic_iterations : 1} timeline(s)...</p> )}
               {error && <p style={{ color: 'red' }}>Error: {error}</p>}
             </div>
@@ -1017,7 +1044,11 @@ export default function App() {
                         const totalSimulationMonths = (params.simulation_end_year - params.simulation_start_year) * 12;
                         return (evMonthRelative > 0 && evMonthRelative <= totalSimulationMonths) ? <ReferenceLine yAxisId="left" key={`ref-spend-${i}`} x={evMonthRelative} stroke="#ea580c" isFront={true} label={{ value: `Spend: ${(ev.amount/1000).toFixed(0)}k`, position: 'insideTopLeft', fill: '#9a3412', fontSize: 12 }} /> : null; 
                       })}
-
+                      {(params.buffer_target_events || []).map((ev, i) => { 
+                        const evMonthRelative = ((ev.year - params.simulation_start_year) * 12) + ev.month - params.simulation_start_month + 1;
+                        const totalSimulationMonths = (params.simulation_end_year - params.simulation_start_year) * 12;
+                        return (evMonthRelative > 0 && evMonthRelative <= totalSimulationMonths) ? <ReferenceLine yAxisId="left" key={`ref-buftgt-${i}`} x={evMonthRelative} stroke="#0d9488" isFront={true} label={{ value: `Buffer Tgt: ${ev.target_months}mo`, position: 'insideTopRight', fill: '#0f766e', fontSize: 12 }} /> : null; 
+                      })}
                       {activeModels.map(model => params.tax_residencies.map(tax => <Line yAxisId="left" key={`${model}_${tax}`} type="monotone" dataKey={`${model}_${tax}_value`} name={`${dynamicModels.displayNames[model] || model} (${tax.replace(/_/g, ' ')})`} stroke={dynamicModels.displayColors[model] || '#000'} strokeDasharray={dynamicModels.taxStyles[tax]} strokeWidth={2} dot={false} isAnimationActive={false} hide={hiddenLines.includes(`${model}_${tax}_value`)} />))}
                       
                       {activeModels.map(model => {
@@ -1059,7 +1090,11 @@ export default function App() {
                         const totalSimulationMonths = (params.simulation_end_year - params.simulation_start_year) * 12;
                         return (evMonthRelative > 0 && evMonthRelative <= totalSimulationMonths) ? <ReferenceLine yAxisId="left" key={`ref-spend-bot-${i}`} x={evMonthRelative} stroke="#ea580c" isFront={true} /> : null; 
                       })}
-
+                      {(params.buffer_target_events || []).map((ev, i) => { 
+                        const evMonthRelative = ((ev.year - params.simulation_start_year) * 12) + ev.month - params.simulation_start_month + 1;
+                        const totalSimulationMonths = (params.simulation_end_year - params.simulation_start_year) * 12;
+                        return (evMonthRelative > 0 && evMonthRelative <= totalSimulationMonths) ? <ReferenceLine yAxisId="left" key={`ref-buftgt-bot-${i}`} x={evMonthRelative} stroke="#0d9488" isFront={true} /> : null; 
+                      })}
                       {activeModels.map(model => {
                         const isModelHidden = params.tax_residencies.every(tax => hiddenLines.includes(`${model}_${tax}_value`));
                         return (
