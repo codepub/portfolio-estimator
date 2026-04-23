@@ -383,6 +383,32 @@ class TestPortfolioSimulator(unittest.TestCase):
         self.assertGreater(simulated_index, 1.0, f"FATAL: Valuation anchor failed. Index collapsed to {simulated_index:.5f}")
         self.assertLess(simulated_index, 100.0, "FATAL: Anchor is too strong. It overpowered a constant 50-year bear market.")
 
+    @patch('random.gauss')
+    def test_heston_valuation_anchor(self, mock_gauss):
+        """Prove that the intrinsic valuation anchor prevents total societal collapse."""
+        
+        # Scale the constant shock down so that 21 daily sub-steps 
+        # integrate to exactly a -0.5 monthly standard normal shock.
+        sub_steps_per_month = 21
+        mock_gauss.return_value = -0.5 / math.sqrt(sub_steps_per_month)
+        
+        expected_return = 0.07
+        annual_volatility = 0.225
+        total_months = 600
+        
+        rates = self.simulator._generate_heston_returns(
+            expected_return, 
+            annual_volatility, 
+            total_months
+        )
+        
+        simulated_index = 100.0
+        for r in rates:
+            simulated_index *= (1 + r)
+            
+        self.assertGreater(simulated_index, 1.0, f"FATAL: Valuation anchor failed. Index collapsed to {simulated_index:.5f}")
+        self.assertLess(simulated_index, 100.0, "FATAL: Anchor is too strong. It overpowered a constant 50-year bear market.")
+
     def test_option5_dual_momentum_regimes(self):
         """
         Prove the 3-Regime Dual-Momentum elastic withdrawal logic, 
