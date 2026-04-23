@@ -307,7 +307,7 @@ export default function App() {
 
     const handleEngineChange = (e) => {
       const engine = e.target.value;
-      const defaultVol = engine === 'heston' ? 0.16 : 0.16;
+      const defaultVol = engine === 'heston' ? 0.19 : 0.19;
       setParams(prev => ({ ...prev, stochastic_engine: engine, stochastic_volatility: defaultVol }));
     };
     const handleArrayToggle = (key, id) => { setParams(prev => { const isSelected = prev[key].includes(id); const newList = isSelected ? prev[key].filter(i => i !== id) : [...prev[key], id]; return { ...prev, [key]: newList.length ? newList : [id] }; }); };

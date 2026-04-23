@@ -8,6 +8,14 @@
         { "limit": null, "rate": 0.34 }
       ]
     },
+    "Finland for 2 people": {
+      "type": "tiered",
+      "description": "30% up to 30,000 EUR, 34% on the exceeding amount- so 60keur with 30% with two people",
+      "brackets": [
+        { "limit": 60000, "rate": 0.30 },
+        { "limit": null, "rate": 0.34 }
+      ]
+    },
     "Italy_7_Percent": {
       "type": "flat",
       "description": "Flat 7% tax regime for retirees moving to specific southern regions.",

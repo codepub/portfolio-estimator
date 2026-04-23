@@ -70,7 +70,7 @@ class SimulationParams(BaseModel):
     initial_profit_percentage: float = 0.40
     yearly_spending: float = 40000.0
     inflation_percentage: float = 0.02
-    poverty_threshold: float = 600.0          # <- Added missing variable!
+    poverty_threshold: float = 600.0          
     pensions: List[PensionInput] = []
     pensions_inflation_adjusted: bool = True
     cash_events: List[CashEventInput] = []
@@ -95,7 +95,7 @@ class SimulationParams(BaseModel):
     buffer_current_size: float = 120000.0
     buffer_refill_throttle_months: int = 3
     buffer_depletion_threshold: float = 0.0
-    buffer_replenishment_threshold: float = 0.01  # Upgraded to 1%
+    buffer_replenishment_threshold: float = 0.1  # yearly increase, in code divided to monthly
     use_trend_guardrail: bool = False
     trend_sma_months: int = 12
     use_equity_glidepath: bool = False

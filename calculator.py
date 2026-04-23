@@ -200,52 +200,65 @@ class PortfolioSimulator:
         return returns
 
     def _generate_heston_returns(self, expected_annual_return, annual_volatility, total_months):
-        """Heston Model: Stochastic volatility with valuation-anchored mean-reversion."""
-        dt = 1/12
+        """Heston Model: Stochastic volatility with valuation-anchored mean-reversion.
+        Utilizes daily sub-stepping for mathematical stability."""
+    
+        # Time domain parameters
+        dt_monthly = 1.0 / 12.0
+        sub_steps_per_month = 21  # roughly trading days in a month
+        dt = dt_monthly / sub_steps_per_month
+    
         base_mu = expected_annual_return
-        
+    
+        # Heston parameters
         v_t = annual_volatility**2
         theta = annual_volatility**2
         kappa = 2.0
         xi = 0.4
         rho = -0.7
-        
-        # Intrinsic Valuation Anchor
+    
+        # Intrinsic Valuation Anchor parameters
         reversion_strength = 0.05
         simulated_index = 100.0
         trend_index = 100.0
-        
+    
         returns = []
-        
+    
         for _ in range(total_months):
-            z1 = random.gauss(0, 1)
-            z2 = random.gauss(0, 1)
-            z_s = z1
-            z_v = rho * z1 + math.sqrt(1 - rho**2) * z2
-            
-            v_t_plus = max(v_t, 0.0)
-            
-            # 1. Grow the theoretical economic baseline
-            trend_index *= math.exp(base_mu * dt)
-            
-            # 2. Calculate the deviation premium
+            # 1. Calculate the valuation premium at the START of the month.
+            # Keeping this at the macro level prevents micro-oscillations.
             valuation_premium = reversion_strength * math.log(trend_index / simulated_index)
-            
-            # 3. Apply the dynamic drift
             dynamic_mu = base_mu + valuation_premium
+        
+            monthly_log_return = 0.0
+        
+            # 2. Sub-step the Heston process (Daily simulation)
+            for _ in range(sub_steps_per_month):
+                z1 = random.gauss(0, 1)
+                z2 = random.gauss(0, 1)
+                z_s = z1
+                z_v = rho * z1 + math.sqrt(1 - rho**2) * z2
             
-            log_ret = (dynamic_mu - 0.5 * v_t_plus) * dt + math.sqrt(v_t_plus * dt) * z_s
-            monthly_return = math.exp(log_ret) - 1
+                # Full Truncation scheme: only use the positive part for the drift and diffusion
+                v_t_plus = max(v_t, 0.0)
+            
+                # Step the log price
+                daily_log_ret = (dynamic_mu - 0.5 * v_t_plus) * dt + math.sqrt(v_t_plus * dt) * z_s
+                monthly_log_return += daily_log_ret
+            
+                # Step the variance
+                v_t = v_t + kappa * (theta - v_t_plus) * dt + xi * math.sqrt(v_t_plus * dt) * z_v
+            
+            # 3. Convert accumulated log returns back to a discrete monthly percentage
+            monthly_return = math.exp(monthly_log_return) - 1
             returns.append(monthly_return)
-            
-            # 4. Update the actual simulated market price
+        
+            # 4. Update the macro indices for the next month's valuation anchor
+            trend_index *= math.exp(base_mu * dt_monthly)
             simulated_index *= (1 + monthly_return)
-            
-            # The volatility process remains a pure, unanchored Heston spiral
-            v_t = v_t + kappa * (theta - v_t_plus) * dt + xi * math.sqrt(v_t_plus * dt) * z_v
-            
-        return returns
 
+        return returns
+    
     def _run_single_timeline(self, params, rates, tax_res, start_year, start_month, total_months):
         results = {}
         portfolio_value = params['initial_investment']
@@ -574,7 +587,7 @@ class PortfolioSimulator:
             total_assets = portfolio_value + current_buffer
             if total_assets > 0:
                 equity_ratio = portfolio_value / total_assets
-                equity_replenish_threshold = params.get('equity replenish_threshold', 0.50)
+                equity_replenish_threshold = params.get('equity_replenish_threshold', 0.50)
                 if equity_ratio < equity_replenish_threshold:
                     allow_replenish = False
 
