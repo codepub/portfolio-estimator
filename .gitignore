@@ -11,3 +11,6 @@ frontend/dist/
 
 # OS Files
 .DS_Store
+
+# user own details
+user_defaults.json

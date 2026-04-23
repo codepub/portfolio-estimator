@@ -127,7 +127,7 @@ export default function App() {
   useEffect(() => {
     const loadConfig = async () => {
       try {
-        const res = await fetch(`http://${window.location.hostname}:8000/config`);
+        const res = await fetch(`http://${window.location.hostname}:8000/config`, { cache: 'no-store' });
         const data = await res.json();
         const historyColors = ['#dc2626', '#9333ea', '#ea580c', '#0284c7', '#ca8a04', '#4f46e5'];
         

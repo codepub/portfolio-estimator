@@ -31,6 +31,17 @@ except FileNotFoundError:
     indices_config = {}
     print("Warning: taxes.json or indices.json not found. Ensure they are in the directory.")
 
+# --- NEW: Load Personal Defaults ---
+try:
+    with open("user_defaults.json", "r") as f:
+        user_defaults = json.load(f)
+except FileNotFoundError:
+    user_defaults = {}
+    print("Notice: user_defaults.json not found. Operating with baseline simulation defaults.")
+except json.JSONDecodeError:
+    user_defaults = {}
+    print("Warning: user_defaults.json is malformed. Operating with baseline simulation defaults.")
+
 simulator = PortfolioSimulator(taxes_config, indices_config)
 
 # Pydantic models validate the incoming data from your UI automatically
@@ -102,6 +113,7 @@ class SimulationParams(BaseModel):
     glidepath_months: int = 60
     use_dynamic_buffer: bool = False
     valuation_slow_sma_months: int = 60
+    use_baseline_volatility: bool = False
     use_high_water_mark: bool = False
     use_proportional_withdrawal: bool = False
     use_attenuator_wr_override: bool = False
@@ -116,7 +128,7 @@ class SimulationParams(BaseModel):
     gk_allow_raises: bool = True
     use_proportional_attenuator: bool = False
     attenuator_max_cut: float = 0.50
-    use_baseline_volatility: bool = False
+    
 
 @app.post("/find_min_capital")
 def find_minimum_capital(params: dict = Body(...)):
@@ -348,14 +360,19 @@ def find_minimum_capital(params: dict = Body(...)):
 @app.get("/config")
 def get_config():
     try:
-        # 1. Build the SSOT defaults. 
-        default_params = SimulationParams().model_dump()
+        # Step A: Attempt to instantiate the model using the unpacked dictionary
+        merged_model = SimulationParams(**user_defaults)
+
+        # Step B: Dump to dict
+        default_params = merged_model.model_dump()
+        
     except Exception as e:
-        print(f"CRITICAL ERROR generating default params: {e}")
-        default_params = {} # Fallback to prevent UI lockup
+        # If Pydantic hates the payload, we will see EXACTLY why here
+        print(f"2. [PYDANTIC ERROR] Validation failed! Reason: {repr(e)}")
+        # We still fall back to prevent a 500 error on the UI, but now we know why
+        default_params = SimulationParams().model_dump()
 
     try:
-        # 2. Load the JSONs
         with open("indices_monthly.json", "r") as f:
             indices = json.load(f)
         with open("taxes.json", "r") as f:
@@ -368,7 +385,7 @@ def get_config():
             "default_params": default_params 
         }
     except Exception as e:
-        print(f"Warning: Could not load JSON configs: {e}")
+        print(f"3. Warning: Could not load JSON configs: {e}")
         return {
             "historical_indices": [], 
             "capital_gains_taxes": ["Finland"], 
