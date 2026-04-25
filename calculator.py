@@ -50,6 +50,13 @@ class PortfolioSimulator:
         """
         if net_needed <= 0:
             return 0.0
+
+        # Apply Hankintameno-olettama (Deemed Acquisition Cost) cap
+        deemed_cost_pct = tax_config.get("deemed_acquisition_cost_pct")
+        if deemed_cost_pct is not None:
+            max_taxable_profit = 1.0 - deemed_cost_pct
+            profit_percentage = min(profit_percentage, max_taxable_profit)
+
         if profit_percentage <= 0:
             return net_needed # No profit means no tax, gross == net
             
@@ -96,6 +103,13 @@ class PortfolioSimulator:
         """
         if gross_amount <= 0:
             return 0.0
+        
+        # Apply Hankintameno-olettama (Deemed Acquisition Cost) cap
+        deemed_cost_pct = tax_config.get("deemed_acquisition_cost_pct")
+        if deemed_cost_pct is not None:
+            max_taxable_profit = 1.0 - deemed_cost_pct
+            profit_percentage = min(profit_percentage, max_taxable_profit)
+
         if profit_percentage <= 0:
             return gross_amount
 
@@ -359,11 +373,11 @@ class PortfolioSimulator:
                 buffer_multiplier = max(0.5, min(1.5, valuation_ratio))
                 target_buffer *= buffer_multiplier
                 
-                if current_buffer > target_buffer and portfolio_value > 0:
-                    excess_cash = current_buffer - target_buffer
-                    current_buffer -= excess_cash
-                    portfolio_value += excess_cash
-                    total_principal += excess_cash 
+            if current_buffer > target_buffer and portfolio_value > 0:
+                excess_cash = current_buffer - target_buffer
+                current_buffer -= excess_cash
+                portfolio_value += excess_cash
+                total_principal += excess_cash 
             # ------------------------------------------------
 
             # PHASE 2 (Option 4): Track the All-Time High of the Market

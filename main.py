@@ -192,11 +192,31 @@ def find_minimum_capital(params: dict = Body(...)):
                     
                     # Setup the test payload
                     test_params = copy.deepcopy(params)
+
                     if test_params.get('use_cash_buffer'):
-                        orig_total = params['initial_investment'] + params.get('buffer_current_size', 0)
-                        buf_ratio = params.get('buffer_current_size', 0) / orig_total if orig_total > 0 else 0.15
-                        test_params['initial_investment'] = test_cap * (1 - buf_ratio)
-                        test_params['buffer_current_size'] = test_cap * buf_ratio
+                        # 1. Establish the baseline target in months
+                        starting_target_months = test_params.get('buffer_target_months', 36)
+    
+                        # 2. Scan for any immediate events that override the starting state
+                        start_year = test_params.get('simulation_start_year')
+                        start_month = test_params.get('simulation_start_month')
+    
+                        for event in test_params.get('buffer_target_events', []):
+                            if event['year'] == start_year and event['month'] == start_month:
+                                starting_target_months = event['target_months']
+                                break
+            
+                        # 3. Calculate the absolute dollar amount required to satisfy the buffer
+                        monthly_spend = test_params.get('yearly_spending', 40000) / 12.0
+                        required_starting_buffer = starting_target_months * monthly_spend
+    
+                        # 4. Allocate capital: Fund the buffer fully first, the rest is investment
+                        test_params['buffer_current_size'] = required_starting_buffer
+                        test_params['initial_investment'] = test_cap - required_starting_buffer
+    
+                        # Note: If test_cap is smaller than the required buffer, initial_investment 
+                        # becomes negative. The simulation engine will naturally (and correctly) fail 
+                        # this path, pushing the binary search to higher capital bounds.
                     else:
                         test_params['initial_investment'] = test_cap
                         test_params['buffer_current_size'] = 0.0

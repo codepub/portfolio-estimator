@@ -2,7 +2,8 @@
   "capital_gains": {
     "Finland": {
       "type": "tiered",
-      "description": "30% up to 30,000 EUR, 34% on the exceeding amount.",
+      "description": "30% up to 30,000 EUR, 34% on the exceeding amount. Assuming here that we only sell over 10 year old investments",
+      "deemed_acquisition_cost_pct": 0.40,
       "brackets": [
         { "limit": 30000, "rate": 0.30 },
         { "limit": null, "rate": 0.34 }
@@ -10,7 +11,8 @@
     },
     "Finland for 2 people": {
       "type": "tiered",
-      "description": "30% up to 30,000 EUR, 34% on the exceeding amount- so 60keur with 30% with two people",
+      "description": "30% up to 30,000 EUR, 34% on the exceeding amount- so 60keur with 30% with two people. Assuming here that we only sell over 10 year old investments",
+      "deemed_acquisition_cost_pct": 0.40,
       "brackets": [
         { "limit": 60000, "rate": 0.30 },
         { "limit": null, "rate": 0.34 }
