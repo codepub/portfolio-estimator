@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { PlusCircle, Trash2, Eye, EyeOff } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, ZAxis, CartesianGrid, ScatterChart, Scatter, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { PlusCircle, Trash2, Eye, EyeOff, Zap } from 'lucide-react';
 
 const formatEur = (val) => new Intl.NumberFormat('fi-FI', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(val);
 
@@ -98,6 +98,78 @@ export default function App() {
   const [isTargeting, setIsTargeting] = useState(false);
   const [targetResults, setTargetResults] = useState(null);
   const [analysisMode, setAnalysisMode] = useState('forward');
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizationResult, setOptimizationResult] = useState(null);
+  const [optimizationConfig, setOptimizationConfig] = useState({
+    target_success_rate: 0.95,
+    search_iterations: 30,
+    paths_per_evaluation: 20
+  });
+
+const handleOptimize = async () => {
+    setIsOptimizing(true);
+    setOptimizationResult(null);
+    try {
+      const response = await fetch('http://localhost:8000/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_params: params, // Send current form state as the environment
+          target_success_rate: optimizationConfig.target_success_rate,
+          search_iterations: optimizationConfig.search_iterations,
+          paths_per_evaluation: optimizationConfig.paths_per_evaluation
+        }),
+      });
+      if (!response.ok) throw new Error('Optimization failed');
+      const data = await response.json();
+      setOptimizationResult(data);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to run optimizer. Check console.");
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+const applyOptimizedStrategy = () => {
+    if (!optimizationResult?.optimal_strategy) return;
+    const best = optimizationResult.optimal_strategy.parameters;
+    
+    setParams(prev => {
+      // Always update the universal genes
+      let nextParams = {
+        ...prev,
+        yearly_spending: Math.round(best.withdrawal_rate * (prev.initial_investment || 0)),
+        buffer_target_months: best.buffer_months,
+      };
+
+      // Selectively update strategy genes and toggle the correct checkboxes
+      if (best.active_strategy === "Low Season Austerity") {
+        nextParams.enable_low_season_spend = true;
+        nextParams.use_guyton_klinger = false;
+        nextParams.use_proportional_attenuator = false;
+        nextParams.low_season_cut_percentage = best.low_season_cut_percentage || 0;
+      } else if (best.active_strategy === "Proportional Attenuator") {
+        nextParams.enable_low_season_spend = false;
+        nextParams.use_guyton_klinger = false;
+        nextParams.use_proportional_attenuator = true;
+        nextParams.attenuator_max_cut = best.attenuator_max_cut;
+      } else if (best.active_strategy === "Guyton-Klinger") {
+        nextParams.enable_low_season_spend = false;
+        nextParams.use_proportional_attenuator = false;
+        nextParams.use_guyton_klinger = true;
+        nextParams.gk_cut_rate = best.gk_cut_rate;
+        nextParams.gk_raise_rate = best.gk_raise_rate;
+        nextParams.gk_upper_threshold = best.gk_withdrawal_limit_upper;
+        nextParams.gk_lower_threshold = best.gk_withdrawal_limit_lower;
+        nextParams.gk_allow_raises = (best.gk_raise_rate > 0);
+      } else if (best.active_strategy === "Ratcheting") {
+        nextParams.ratchet_raise_rate = best.ratchet_raise_rate;
+      }
+
+      return nextParams;
+    });
+  };
 
   const handleFindMinimumCapital = async () => {
     if (!params) return;
@@ -161,6 +233,9 @@ export default function App() {
 
         if (data.default_params) {
             setParams(data.default_params);
+        }
+        if (data.optimizer_defaults) {
+            setOptimizationConfig(data.optimizer_defaults);
         }
 
       } catch (err) { console.error("Failed to load backend config", err); }
@@ -372,7 +447,7 @@ export default function App() {
                 <span style={{ backgroundColor: '#2563eb', color: '#fff', width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>1</span>
                 Simulation Parameters
               </h2>
-              <p style={{ margin: '4px 0 0 32px', fontSize: '12px', color: '#64748b' }}>Configuration used by both analytical engine modes.</p>
+              <p style={{ margin: '4px 0 0 32px', fontSize: '12px', color: '#64748b' }}>Configuration used by all analytical engine modes.</p>
             </div>
 
             <div style={{ padding: '20px' }}>
@@ -822,7 +897,7 @@ export default function App() {
                   </div>
                 )}
 
-              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px', marginTop: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                   <h4 style={{ margin: 0 }}>Cash Events (One-Time)</h4>
                   <button onClick={addCashEvent} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', background: '#dcfce7', border: 'none', padding: '6px 12px', borderRadius: '4px', color: '#166534', fontWeight: 'bold' }}><PlusCircle size={16} /> Add</button>
@@ -960,12 +1035,11 @@ export default function App() {
                   <span style={{ backgroundColor: '#059669', color: '#fff', width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>2</span>
                   Analytical Engine
                 </h2>
-                <p style={{ margin: '4px 0 0 32px', fontSize: '12px', color: '#64748b' }}>Select Forward Projection to see how far your money goes with your simulation parameters.</p>
-                <p style={{ margin: '4px 0 0 32px', fontSize: '12px', color: '#64748b' }}>Select Find Required Capital to see how much money you'd need to meet your simulation parameters.</p>
+                <p style={{ margin: '4px 0 0 32px', fontSize: '12px', color: '#64748b' }}>Select an operational mode to analyze your parameters.</p>
               </div>
 
               {/* TAB TOGGLE */}
-              <div style={{ display: 'flex', backgroundColor: '#e2e8f0', padding: '4px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+              <div style={{ display: 'flex', backgroundColor: '#e2e8f0', padding: '4px', borderRadius: '8px', border: '1px solid #cbd5e1', gap: '4px' }}>
                 <button
                   onClick={() => setAnalysisMode('forward')}
                   style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: analysisMode === 'forward' ? '#fff' : 'transparent', color: analysisMode === 'forward' ? '#0f172a' : '#64748b', boxShadow: analysisMode === 'forward' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.2s' }}
@@ -977,6 +1051,12 @@ export default function App() {
                   style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: analysisMode === 'reverse' ? '#fff' : 'transparent', color: analysisMode === 'reverse' ? '#0f172a' : '#64748b', boxShadow: analysisMode === 'reverse' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.2s' }}
                 >
                   🎯 Find Required Capital
+                </button>
+                <button
+                  onClick={() => setAnalysisMode('optimizer')}
+                  style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: analysisMode === 'optimizer' ? '#fff' : 'transparent', color: analysisMode === 'optimizer' ? '#0f172a' : '#64748b', boxShadow: analysisMode === 'optimizer' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Zap size={14} /> Cash and Buffer Size Optimizer
                 </button>
               </div>
             </div>
@@ -1173,7 +1253,7 @@ export default function App() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <h3 style={{ margin: '0 0 4px 0', color: '#0369a1', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                       🔄 Find Required Capital: Reverse solver
+                        🔄 Find Required Capital: Reverse solver
                     </h3>
                     <p style={{ margin: 0, fontSize: '13px', color: '#0c4a6e', maxWidth: '600px', lineHeight: '1.4' }}>
                       Calculates the <strong>Initial Capital</strong> needed to survive the timeline you configured on the left, while ensuring your real monthly spending never drops below your €{params.poverty_threshold}/mo poverty floor.
@@ -1265,8 +1345,239 @@ export default function App() {
               </div>
             )}
 
+{/* --- TAB 3: OPTIMIZER --- */}
+            {analysisMode === 'optimizer' && (
+              <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Zap size={18} color="#0284c7" /> Stochastic Parameter Search
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#64748b', maxWidth: '600px', lineHeight: '1.4' }}>
+                      Finds parameters that maximize lifetime spending while maintaining your target survival rate. Uses randomized search across the parameter space.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={handleOptimize}
+                    disabled={isOptimizing}
+                    style={{ backgroundColor: isOptimizing ? '#94a3b8' : '#0284c7', color: '#fff', padding: '12px 24px', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: isOptimizing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', boxShadow: '0 4px 6px -1px rgba(2, 132, 199, 0.2)' }}
+                  >
+                    {isOptimizing ? 'Exploring...' : 'Calculate'}
+                  </button>
+                </div>
+
+                {/* NEW: Optimizer Configuration Inputs */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', backgroundColor: '#f1f5f9', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Target Success Rate (Dec)</label>
+                    <input 
+                      type="number" 
+                      value={optimizationConfig.target_success_rate} 
+                      onChange={(e) => setOptimizationConfig(prev => ({ ...prev, target_success_rate: parseFloat(e.target.value) || 0 }))}
+                      step="0.01" min="0" max="1"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Search Iterations</label>
+                    <input 
+                      type="number" 
+                      value={optimizationConfig.search_iterations} 
+                      onChange={(e) => setOptimizationConfig(prev => ({ ...prev, search_iterations: parseInt(e.target.value) || 0 }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>Paths per Evaluation</label>
+                    <input 
+                      type="number" 
+                      value={optimizationConfig.paths_per_evaluation} 
+                      onChange={(e) => setOptimizationConfig(prev => ({ ...prev, paths_per_evaluation: parseInt(e.target.value) || 0 }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                {optimizationResult && (
+  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '20px', display: 'flex', gap: '24px' }}>
+    
+    {/* Dynamic Strategy Card */}
+    <div style={{ flex: 1, backgroundColor: 'white', padding: '16px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+      
+      {optimizationResult.optimal_strategy ? (
+        <>
+          <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Zap size={20} color="#3b82f6" />
+            Optimal Parameters Found
+          </h3>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', fontSize: '14px', color: '#334155' }}>
+            
+            {/* Universal Settings */}
+            <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Spending Algorithm</div>
+              <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
+                {optimizationResult.optimal_strategy.parameters.active_strategy}
+              </div>
+            </div>
+            
+            <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Yearly Spending</div>
+              <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
+                {formatEur(optimizationResult.optimal_strategy.parameters.withdrawal_rate * (params?.initial_investment || 0))}
+                <span style={{ fontWeight: 'normal', color: '#64748b', marginLeft: '6px', fontSize: '13px' }}>
+                  ({(optimizationResult.optimal_strategy.parameters.withdrawal_rate * 100).toFixed(2)}%)
+                </span>
+              </div>
+            </div>
+
+            <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cash Buffer Target</div>
+              <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
+                {optimizationResult.optimal_strategy.parameters.buffer_months} Months
+              </div>
+            </div>
+
+            {/* Dynamic Strategy Parameters */}
+            {/* Dynamic Strategy Parameters */}
+            
+            {optimizationResult.optimal_strategy.parameters.active_strategy === "Low Season Austerity" && (
+              <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Belt-Tightening Cut (Decimal)</div>
+                <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
+                  {Number(optimizationResult.optimal_strategy.parameters.low_season_cut_percentage || 0)}
+                </div>
+              </div>
+            )}
+
+            {optimizationResult.optimal_strategy.parameters.active_strategy === "Proportional Attenuator" && (
+              <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Maximum Dimming Floor (Decimal)</div>
+                <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
+                  {Number(optimizationResult.optimal_strategy.parameters.attenuator_max_cut)}
+                </div>
+              </div>
+            )}
+
+            {optimizationResult.optimal_strategy.parameters.active_strategy === "Guyton-Klinger" && (
+              <>
+                <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Upper Threshold (Decimal)</div>
+                  <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
+                    {Number(optimizationResult.optimal_strategy.parameters.gk_withdrawal_limit_upper)}
+                  </div>
+                </div>
+                <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lower Threshold (Decimal)</div>
+                  <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
+                    {Number(optimizationResult.optimal_strategy.parameters.gk_withdrawal_limit_lower)}
+                  </div>
+                </div>
+                <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Spending Cut Rate (Decimal)</div>
+                  <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
+                    {Number(optimizationResult.optimal_strategy.parameters.gk_cut_rate)}
+                  </div>
+                </div>
+                <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Spending Raise Rate (Decimal)</div>
+                  <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
+                    {Number(optimizationResult.optimal_strategy.parameters.gk_raise_rate)}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {optimizationResult.optimal_strategy.parameters.active_strategy === "Ratcheting" && (
+              <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ratchet Raise Rate (Decimal)</div>
+                <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
+                  {Number(optimizationResult.optimal_strategy.parameters.ratchet_raise_rate)}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: 'bold', color: '#16a34a', fontSize: '16px' }}>
+                Projected Success Rate: {(optimizationResult.optimal_strategy.metrics.success_rate * 100).toFixed(1)}%
+              </div>
+              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+                Median Total Spend: {formatEur(optimizationResult.optimal_strategy.metrics.median_total_spend)}
+              </div>
+            </div>
+            <button 
+              onClick={applyOptimizedStrategy}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: 'background-color 0.2s' }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
+            >
+              Apply to Form
+            </button>
+          </div>
+        </>
+      ) : (
+        <div style={{ padding: '16px', backgroundColor: '#fff1f2', color: '#be123c', borderRadius: '6px', border: '1px solid #fecdd3', fontSize: '14px', height: '100%', boxSizing: 'border-box' }}>
+          <h4 style={{ margin: '0 0 8px 0', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            ⚠️ No viable strategy found
+          </h4>
+          <p style={{ margin: '0 0 12px 0', lineHeight: '1.5' }}>
+            None of the explored parameter sets achieved the target survival rate of <strong>{(optimizationConfig.target_success_rate * 100).toFixed(1)}%</strong>. 
+          </p>
+          <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.5', color: '#9f1239' }}>
+            <li>Try increasing the search iterations.</li>
+            <li>Increase your starting capital.</li>
+            <li>Accept a lower target success rate.</li>
+          </ul>
+        </div>
+      )}
+    </div>
+
+    {/* Fitness Landscape Visualization */}
+    <div style={{ flex: 2, height: '350px' }}>
+      <h4 style={{ margin: '0 0 12px 0', color: '#0f172a', textAlign: 'center', fontSize: '14px' }}>Search Landscape (Withdrawal Rate vs Success)</h4>
+      <ResponsiveContainer width="100%" height="100%">
+        <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 20 }}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis 
+            type="number" 
+            dataKey="parameters.withdrawal_rate" 
+            name="Withdrawal" 
+            tickFormatter={(v) => `${(v*100).toFixed(1)}%`} 
+            domain={['auto', 'auto']}
+          />
+          <YAxis 
+            type="number" 
+            dataKey="metrics.success_rate" 
+            name="Success" 
+            tickFormatter={(v) => `${(v*100).toFixed(0)}%`} 
+            domain={[0, 1]}
+          />
+          <ZAxis type="number" dataKey="metrics.median_total_spend" range={[50, 400]} name="Spend" />
+          <Tooltip 
+            cursor={{ strokeDasharray: '3 3' }}
+            formatter={(value, name) => {
+              if (name === 'Withdrawal') return `${(value*100).toFixed(2)}%`;
+              if (name === 'Success') return `${(value*100).toFixed(1)}%`;
+              if (name === 'Spend') return formatEur(value);
+              return value;
+            }}
+          />
+          <Scatter name="Strategies" data={optimizationResult.history} fill="#8b5cf6" fillOpacity={0.6} />
+          <ReferenceLine y={optimizationConfig.target_success_rate} stroke="red" strokeDasharray="3 3" />
+        </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+
+  </div>
+)}
+
+              </div>
+            )}
+            
           </div>
         </div>
       </div>
     );
-  }
+}

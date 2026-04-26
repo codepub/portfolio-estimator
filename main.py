@@ -1,13 +1,16 @@
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import List, Optional, Tuple
 import json
 import copy
 import random
+import concurrent.futures
+import multiprocessing
 from datetime import datetime
 import statistics
 from calculator import PortfolioSimulator
+
 
 app = FastAPI(title="Portfolio Estimator API")
 
@@ -31,7 +34,7 @@ except FileNotFoundError:
     indices_config = {}
     print("Warning: taxes.json or indices.json not found. Ensure they are in the directory.")
 
-# --- NEW: Load Personal Defaults ---
+# --- Load Personal Defaults ---
 try:
     with open("user_defaults.json", "r") as f:
         user_defaults = json.load(f)
@@ -129,6 +132,206 @@ class SimulationParams(BaseModel):
     use_proportional_attenuator: bool = False
     attenuator_max_cut: float = 0.50
     
+# 1. Define the input schema for the optimization endpoint
+class OptimizationRequest(BaseModel):
+    base_params: dict = Field(..., description="The baseline simulation parameters from the UI")
+    target_success_rate: float = Field(0.95, description="Minimum acceptable success rate (e.g., 0.95 for 95%)")
+    search_iterations: int = Field(100, description="How many random parameter sets to explore")
+    paths_per_evaluation: int = Field(1000, description="How many stochastic paths to run per parameter set to check viability")
+
+# 2. Define the search space boundaries
+SEARCH_SPACE = {
+    "withdrawal_rate": (0.02, 0.08),        # 2% to 8% initial withdrawal
+    "buffer_target_months": (0, 48),        # 0 to 4 years of cash buffer
+    "spend_floor_multiplier": (0.7, 0.95),  # Max austerity cut (e.g., dropping to 70% of initial spend)
+    "spend_ceiling_multiplier": (1.0, 1.5)  # Max prosperity increase
+}
+
+def evaluate_strategy(simulator, params_variant: dict, paths: int) -> Tuple[float, float]:
+    """
+    Runs the simulator multiple times for a specific parameter variant.
+    """
+    success_count = 0
+    total_spends = []
+    
+    growth_models = params_variant.get('growth_models', ['linear'])
+    base_model = growth_models[0] if growth_models else 'linear'
+    
+    # FIX: Prevent catastrophic nested loops. We handle the multi-path logic here, 
+    # so we tell the underlying engine to only run 1 timeline per call.
+    params_variant['stochastic_iterations'] = 1 
+    
+    if base_model == 'stochastic':
+        model_key = 'stochastic_50' # With iterations=1, the median line is the exact path
+    else:
+        model_key = base_model
+        
+    tax_residencies = params_variant.get('tax_residencies', ['Finland'])
+    tax_res = tax_residencies[0] if tax_residencies else 'Finland'
+    
+    value_key = f"{model_key}_{tax_res}_value"
+    spend_key = f"{model_key}_{tax_res}_spend"
+
+    actual_paths = 1 if base_model != 'stochastic' else paths
+
+    # --- NEW: Extract inflation and poverty baseline ---
+    inflation_rate = params_variant.get('inflation_percentage', 0.02)
+    monthly_inflation_rate = (1 + inflation_rate) ** (1/12) - 1
+    poverty_threshold = params_variant.get('poverty_threshold', 600.0)
+
+    for _ in range(actual_paths):
+        results = simulator.run_simulation(params_variant)
+        
+        if not results:
+            continue
+            
+        path_spend = 0
+        min_real_monthly_spend = float('inf')
+        
+        # Iterate through the timeline to calculate path constraints
+        for month_idx, month_data in enumerate(results):
+            spend = month_data.get(spend_key, 0)
+            path_spend += spend
+            
+            # Discount the nominal spend back to today's purchasing power
+            real_spend = spend / ((1 + monthly_inflation_rate) ** month_idx)
+            
+            # Ignore months where absolute spend is 0 (e.g., fully bridged by pension)
+            if spend > 0 and real_spend < min_real_monthly_spend:
+                min_real_monthly_spend = real_spend
+                
+        total_spends.append(path_spend)
+        
+        final_month_data = results[-1]
+        final_value = final_month_data.get(value_key, 0)
+        
+        # --- UPDATED: Success requires both capital survival AND staying out of poverty ---
+        if final_value > 0 and min_real_monthly_spend >= poverty_threshold:
+            success_count += 1
+            
+    success_rate = success_count / actual_paths if actual_paths > 0 else 0
+    median_spend = statistics.median(total_spends) if total_spends else 0
+    
+    return success_rate, median_spend
+
+# This helper must be at the top level of the file so the ProcessPool can pickle it.
+def worker_evaluate(task: dict):
+    variant = task['variant']
+    paths = task['paths']
+    target_success_rate = task['target_success_rate']
+    
+    success_rate, median_spend = evaluate_strategy(simulator, variant, paths)
+    
+    if success_rate >= target_success_rate:
+        fitness = median_spend
+    else:
+        penalty_factor = (success_rate / target_success_rate) ** 3
+        fitness = median_spend * penalty_factor
+        
+    w_rate = variant["yearly_spending"] / variant["initial_investment"]
+    
+    # Pack the universal parameters
+    returned_params = {
+        "withdrawal_rate": round(w_rate, 4),
+        "buffer_months": variant["buffer_target_months"],
+    }
+    
+    # Pack the strategy-specific parameters based on what is active
+    if variant.get("use_proportional_attenuator"):
+        returned_params["attenuator_max_cut"] = round(variant.get("attenuator_max_cut", 0), 2)
+        returned_params["attenuator_limit"] = round(variant.get("attenuator_limit", 0), 2)
+        returned_params["active_strategy"] = "Proportional Attenuator"
+        
+    elif variant.get("use_guyton_klinger"):
+        returned_params["gk_cut_rate"] = round(variant.get("gk_cut_rate", 0), 2)
+        returned_params["gk_raise_rate"] = round(variant.get("gk_raise_rate", 0), 2)
+        returned_params["gk_withdrawal_limit_upper"] = round(variant.get("gk_withdrawal_limit_upper", 0), 2)
+        returned_params["gk_withdrawal_limit_lower"] = round(variant.get("gk_withdrawal_limit_lower", 0), 2)
+        returned_params["active_strategy"] = "Guyton-Klinger"
+        
+    elif variant.get("use_ratcheting"):
+         returned_params["ratchet_raise_rate"] = round(variant.get("ratchet_raise_rate", 0), 2)
+         returned_params["active_strategy"] = "Ratcheting"
+         
+    else:
+        returned_params["active_strategy"] = "Constant Spend / Buffer Only"
+        
+    return {
+        "parameters": returned_params,
+        "metrics": {
+            "success_rate": round(success_rate, 2),
+            "median_total_spend": round(median_spend, 2),
+            "fitness": round(fitness, 2)
+        }
+    }
+
+@app.post("/optimize")
+def optimize_strategy(req: OptimizationRequest):
+    tasks = []
+    
+    # 1. Generate the parameter variations
+    for _ in range(req.search_iterations):
+        variant = copy.deepcopy(req.base_params)
+        
+        # 1. UNIVERSAL GENES (Always optimized)
+        w_rate = random.uniform(0.02, 0.08)
+        buffer_months = random.randint(0, 60)
+        variant["yearly_spending"] = w_rate * variant["initial_investment"]
+        variant["buffer_target_months"] = buffer_months
+
+        # 2. STRATEGY-SPECIFIC GENES (Context-Aware)
+        
+        # Branch A: Proportional Attenuator
+        if variant.get("use_proportional_attenuator"):
+            # Only optimize attenuator rules
+            variant["attenuator_max_cut"] = random.uniform(0.1, 0.5)  # Max cut between 10% and 50%
+            
+        # Branch B: Guyton-Klinger
+        elif variant.get("use_guyton_klinger"):
+            # Only optimize GK rules
+            variant["gk_cut_rate"] = random.uniform(0.05, 0.15)       # Cut spending by 5% to 15%
+            variant["gk_raise_rate"] = random.uniform(0.05, 0.15)     # Raise spending by 5% to 15%
+            variant["gk_withdrawal_limit_upper"] = random.uniform(1.1, 1.3) # Prosperity trigger
+            variant["gk_withdrawal_limit_lower"] = random.uniform(0.7, 0.9) # Austerity trigger
+            
+        # Branch C: Ratcheting
+        elif variant.get("use_ratcheting"):
+             variant["ratchet_raise_rate"] = random.uniform(0.02, 0.10)
+
+        # 3. Add to task list
+        tasks.append({
+            "variant": variant,
+            "paths": req.paths_per_evaluation,
+            "target_success_rate": req.target_success_rate
+        })
+
+    exploration_history = []
+    best_strategy = None
+    best_fitness = -1
+
+    # 2. Execute parallel evaluations. We leave 1 core free to keep the OS/webserver responsive.
+    cpu_cores = max(1, multiprocessing.cpu_count() - 1)
+    
+    with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_cores) as executor:
+        # map() blocks until all parallel tasks are complete
+        results = executor.map(worker_evaluate, tasks)
+        
+        for res in results:
+            exploration_history.append(res)
+            
+            # Keep track of the optimum
+            if res["metrics"]["fitness"] > best_fitness and res["metrics"]["success_rate"] >= req.target_success_rate:
+                best_fitness = res["metrics"]["fitness"]
+                best_strategy = res
+
+    # 3. Sort history so the frontend can visualize the "fitness landscape"
+    exploration_history.sort(key=lambda x: x["metrics"]["fitness"], reverse=True)
+
+    return {
+        "status": "success",
+        "optimal_strategy": best_strategy,
+        "history": exploration_history[:10]
+    }
 
 @app.post("/find_min_capital")
 def find_minimum_capital(params: dict = Body(...)):
@@ -137,10 +340,7 @@ def find_minimum_capital(params: dict = Body(...)):
     to survive the timeline while maintaining the Poverty Disqualifier floor.
     Executes timelines concurrently using a multiprocessing pool.
     """
-    import random
-    import copy
-    import concurrent.futures
-    
+
     total_months = (params['simulation_end_year'] - params['simulation_start_year']) * 12
     iterations = params.get('stochastic_iterations', 100)
     poverty_threshold_annual = params.get('poverty_threshold', 600) * 12
@@ -206,7 +406,7 @@ def find_minimum_capital(params: dict = Body(...)):
                                 starting_target_months = event['target_months']
                                 break
             
-                        # 3. Calculate the absolute dollar amount required to satisfy the buffer
+                        # 3. Calculate the absolute spend amount required to satisfy the buffer
                         monthly_spend = test_params.get('yearly_spending', 40000) / 12.0
                         required_starting_buffer = starting_target_months * monthly_spend
     
@@ -379,6 +579,14 @@ def find_minimum_capital(params: dict = Body(...)):
 
 @app.get("/config")
 def get_config():
+
+    # Dynamically extract defaults directly from the Pydantic model
+    opt_defaults = {
+        "target_success_rate": OptimizationRequest.model_fields["target_success_rate"].default,
+        "search_iterations": OptimizationRequest.model_fields["search_iterations"].default,
+        "paths_per_evaluation": OptimizationRequest.model_fields["paths_per_evaluation"].default
+    }
+
     try:
         # Step A: Attempt to instantiate the model using the unpacked dictionary
         merged_model = SimulationParams(**user_defaults)
@@ -402,7 +610,8 @@ def get_config():
             "historical_indices": list(indices.keys()),
             "capital_gains_taxes": list(taxes.get("capital_gains", {}).keys()),
             "pension_taxes": list(taxes.get("pension_income", {}).keys()),
-            "default_params": default_params 
+            "default_params": default_params,
+            "optimizer_defaults": opt_defaults 
         }
     except Exception as e:
         print(f"3. Warning: Could not load JSON configs: {e}")
@@ -410,7 +619,8 @@ def get_config():
             "historical_indices": [], 
             "capital_gains_taxes": ["Finland"], 
             "pension_taxes": ["Finland"],
-            "default_params": default_params 
+            "default_params": default_params,
+            "optimizer_defaults": opt_defaults
         }
 
 @app.post("/simulate")
