@@ -149,32 +149,23 @@ SEARCH_SPACE = {
 
 def evaluate_strategy(simulator, params_variant: dict, paths: int) -> Tuple[float, float]:
     """
-    Runs the simulator multiple times for a specific parameter variant.
+    Runs the simulator for a specific model and tax combination.
     """
     success_count = 0
     total_spends = []
     
-    growth_models = params_variant.get('growth_models', ['linear'])
-    base_model = growth_models[0] if growth_models else 'linear'
+    # The variant now represents exactly one coordinate in the matrix
+    base_model = params_variant['growth_models'][0]
+    tax_res = params_variant['tax_residencies'][0]
     
-    # FIX: Prevent catastrophic nested loops. We handle the multi-path logic here, 
-    # so we tell the underlying engine to only run 1 timeline per call.
     params_variant['stochastic_iterations'] = 1 
     
-    if base_model == 'stochastic':
-        model_key = 'stochastic_50' # With iterations=1, the median line is the exact path
-    else:
-        model_key = base_model
-        
-    tax_residencies = params_variant.get('tax_residencies', ['Finland'])
-    tax_res = tax_residencies[0] if tax_residencies else 'Finland'
-    
+    model_key = 'stochastic_50' if base_model == 'stochastic' else base_model
     value_key = f"{model_key}_{tax_res}_value"
     spend_key = f"{model_key}_{tax_res}_spend"
 
-    actual_paths = 1 if base_model != 'stochastic' else paths
+    actual_paths = paths if base_model == 'stochastic' else 1
 
-    # --- NEW: Extract inflation and poverty baseline ---
     inflation_rate = params_variant.get('inflation_percentage', 0.02)
     monthly_inflation_rate = (1 + inflation_rate) ** (1/12) - 1
     poverty_threshold = params_variant.get('poverty_threshold', 600.0)
@@ -188,24 +179,19 @@ def evaluate_strategy(simulator, params_variant: dict, paths: int) -> Tuple[floa
         path_spend = 0
         min_real_monthly_spend = float('inf')
         
-        # Iterate through the timeline to calculate path constraints
         for month_idx, month_data in enumerate(results):
             spend = month_data.get(spend_key, 0)
             path_spend += spend
             
-            # Discount the nominal spend back to today's purchasing power
             real_spend = spend / ((1 + monthly_inflation_rate) ** month_idx)
             
-            # Ignore months where absolute spend is 0 (e.g., fully bridged by pension)
             if spend > 0 and real_spend < min_real_monthly_spend:
                 min_real_monthly_spend = real_spend
                 
         total_spends.append(path_spend)
         
-        final_month_data = results[-1]
-        final_value = final_month_data.get(value_key, 0)
+        final_value = results[-1].get(value_key, 0)
         
-        # --- UPDATED: Success requires both capital survival AND staying out of poverty ---
         if final_value > 0 and min_real_monthly_spend >= poverty_threshold:
             success_count += 1
             
@@ -214,11 +200,15 @@ def evaluate_strategy(simulator, params_variant: dict, paths: int) -> Tuple[floa
     
     return success_rate, median_spend
 
-# This helper must be at the top level of the file so the ProcessPool can pickle it.
+
 def worker_evaluate(task: dict):
     variant = task['variant']
     paths = task['paths']
     target_success_rate = task['target_success_rate']
+    
+    # Extract the specific combo for the grouping key later
+    model = variant['growth_models'][0]
+    tax = variant['tax_residencies'][0]
     
     success_rate, median_spend = evaluate_strategy(simulator, variant, paths)
     
@@ -230,13 +220,11 @@ def worker_evaluate(task: dict):
         
     w_rate = variant["yearly_spending"] / variant["initial_investment"]
     
-    # Pack the universal parameters
     returned_params = {
         "withdrawal_rate": round(w_rate, 4),
         "buffer_months": variant["buffer_target_months"],
     }
     
-    # Pack the strategy-specific parameters based on what is active
     if variant.get("use_proportional_attenuator"):
         returned_params["attenuator_max_cut"] = round(variant.get("attenuator_max_cut", 0), 2)
         returned_params["attenuator_limit"] = round(variant.get("attenuator_limit", 0), 2)
@@ -257,6 +245,8 @@ def worker_evaluate(task: dict):
         returned_params["active_strategy"] = "Constant Spend / Buffer Only"
         
     return {
+        "model": model,
+        "tax": tax,
         "parameters": returned_params,
         "metrics": {
             "success_rate": round(success_rate, 2),
@@ -265,72 +255,92 @@ def worker_evaluate(task: dict):
         }
     }
 
+
 @app.post("/optimize")
 def optimize_strategy(req: OptimizationRequest):
     tasks = []
     
-    # 1. Generate the parameter variations
-    for _ in range(req.search_iterations):
-        variant = copy.deepcopy(req.base_params)
-        
-        # 1. UNIVERSAL GENES (Always optimized)
-        w_rate = random.uniform(0.02, 0.08)
-        buffer_months = random.randint(0, 60)
-        variant["yearly_spending"] = w_rate * variant["initial_investment"]
-        variant["buffer_target_months"] = buffer_months
+    growth_models = req.base_params.get('growth_models', ['linear'])
+    tax_residencies = req.base_params.get('tax_residencies', ['Finland'])
+    
+    # 1. Flatten the search space: generate iterations for every combination
+    for model in growth_models:
+        for tax in tax_residencies:
+            for _ in range(req.search_iterations):
+                variant = copy.deepcopy(req.base_params)
+                
+                # Lock this variant to a single matrix coordinate
+                variant["growth_models"] = [model]
+                variant["tax_residencies"] = [tax]
+                
+                w_rate = random.uniform(0.02, 0.08)
+                buffer_months = random.randint(0, 60)
+                variant["yearly_spending"] = w_rate * variant["initial_investment"]
+                variant["buffer_target_months"] = buffer_months
 
-        # 2. STRATEGY-SPECIFIC GENES (Context-Aware)
-        
-        # Branch A: Proportional Attenuator
-        if variant.get("use_proportional_attenuator"):
-            # Only optimize attenuator rules
-            variant["attenuator_max_cut"] = random.uniform(0.1, 0.5)  # Max cut between 10% and 50%
-            
-        # Branch B: Guyton-Klinger
-        elif variant.get("use_guyton_klinger"):
-            # Only optimize GK rules
-            variant["gk_cut_rate"] = random.uniform(0.05, 0.15)       # Cut spending by 5% to 15%
-            variant["gk_raise_rate"] = random.uniform(0.05, 0.15)     # Raise spending by 5% to 15%
-            variant["gk_withdrawal_limit_upper"] = random.uniform(1.1, 1.3) # Prosperity trigger
-            variant["gk_withdrawal_limit_lower"] = random.uniform(0.7, 0.9) # Austerity trigger
-            
-        # Branch C: Ratcheting
-        elif variant.get("use_ratcheting"):
-             variant["ratchet_raise_rate"] = random.uniform(0.02, 0.10)
+                if variant.get("use_proportional_attenuator"):
+                    variant["attenuator_max_cut"] = random.uniform(0.1, 0.5) 
+                elif variant.get("use_guyton_klinger"):
+                    variant["gk_cut_rate"] = random.uniform(0.05, 0.15) 
+                    variant["gk_raise_rate"] = random.uniform(0.05, 0.15) 
+                    variant["gk_withdrawal_limit_upper"] = random.uniform(1.1, 1.3)
+                    variant["gk_withdrawal_limit_lower"] = random.uniform(0.7, 0.9)
+                elif variant.get("use_ratcheting"):
+                     variant["ratchet_raise_rate"] = random.uniform(0.02, 0.10)
 
-        # 3. Add to task list
-        tasks.append({
-            "variant": variant,
-            "paths": req.paths_per_evaluation,
-            "target_success_rate": req.target_success_rate
-        })
+                tasks.append({
+                    "variant": variant,
+                    "paths": req.paths_per_evaluation,
+                    "target_success_rate": req.target_success_rate
+                })
 
-    exploration_history = []
-    best_strategy = None
-    best_fitness = -1
+    # 2. Setup the grouping dictionary structure
+    grouped_results = {}
+    for m in growth_models:
+        for t in tax_residencies:
+            grouped_results[f"{m}_{t}"] = {
+                "model": m,
+                "tax": t,
+                "history": []
+            }
 
-    # 2. Execute parallel evaluations. We leave 1 core free to keep the OS/webserver responsive.
+    # 3. Execute all combinations concurrently
     cpu_cores = max(1, multiprocessing.cpu_count() - 1)
     
     with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_cores) as executor:
-        # map() blocks until all parallel tasks are complete
         results = executor.map(worker_evaluate, tasks)
         
+        # Route results back to their respective combinations
         for res in results:
-            exploration_history.append(res)
-            
-            # Keep track of the optimum
-            if res["metrics"]["fitness"] > best_fitness and res["metrics"]["success_rate"] >= req.target_success_rate:
-                best_fitness = res["metrics"]["fitness"]
-                best_strategy = res
+            key = f"{res['model']}_{res['tax']}"
+            grouped_results[key]["history"].append(res)
 
-    # 3. Sort history so the frontend can visualize the "fitness landscape"
-    exploration_history.sort(key=lambda x: x["metrics"]["fitness"], reverse=True)
+    # 4. Sort and isolate the optimum for each dataset
+    final_output = []
+    for key, data in grouped_results.items():
+        data["history"].sort(key=lambda x: x["metrics"]["fitness"], reverse=True)
+        
+        # Find the highest fitness that ALSO meets the success rate floor
+        best_strat = None
+        for item in data["history"]:
+            if item["metrics"]["success_rate"] >= req.target_success_rate:
+                best_strat = item
+                break
+        
+        # Fallback to the absolute highest fitness if nothing met the target
+        if not best_strat and data["history"]:
+            best_strat = data["history"][0]
+
+        final_output.append({
+            "model": data["model"],
+            "tax": data["tax"],
+            "optimal_strategy": best_strat,
+            "history": data["history"][:]
+        })
 
     return {
         "status": "success",
-        "optimal_strategy": best_strategy,
-        "history": exploration_history[:10]
+        "data": final_output
     }
 
 @app.post("/find_min_capital")

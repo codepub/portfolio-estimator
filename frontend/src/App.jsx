@@ -106,6 +106,7 @@ export default function App() {
     paths_per_evaluation: 20
   });
 
+// ... in handleOptimize function
 const handleOptimize = async () => {
     setIsOptimizing(true);
     setOptimizationResult(null);
@@ -114,15 +115,17 @@ const handleOptimize = async () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          base_params: params, // Send current form state as the environment
+          base_params: params,
           target_success_rate: optimizationConfig.target_success_rate,
           search_iterations: optimizationConfig.search_iterations,
           paths_per_evaluation: optimizationConfig.paths_per_evaluation
         }),
       });
       if (!response.ok) throw new Error('Optimization failed');
-      const data = await response.json();
-      setOptimizationResult(data);
+      
+      const json = await response.json();
+      // Store the 'data' array from the backend response
+      setOptimizationResult(json.data); 
     } catch (error) {
       console.error(error);
       alert("Failed to run optimizer. Check console.");
@@ -131,19 +134,19 @@ const handleOptimize = async () => {
     }
   };
 
-const applyOptimizedStrategy = () => {
-    if (!optimizationResult?.optimal_strategy) return;
-    const best = optimizationResult.optimal_strategy.parameters;
+// Change the function to take the specific optimal_strategy as an argument
+const applyOptimizedStrategy = (optimal_strategy) => {
+    if (!optimal_strategy) return;
+    const best = optimal_strategy.parameters; //
     
     setParams(prev => {
-      // Always update the universal genes
       let nextParams = {
         ...prev,
         yearly_spending: Math.round(best.withdrawal_rate * (prev.initial_investment || 0)),
         buffer_target_months: best.buffer_months,
       };
 
-      // Selectively update strategy genes and toggle the correct checkboxes
+      // Strategy specific logic remains the same
       if (best.active_strategy === "Low Season Austerity") {
         nextParams.enable_low_season_spend = true;
         nextParams.use_guyton_klinger = false;
@@ -164,7 +167,7 @@ const applyOptimizedStrategy = () => {
         nextParams.gk_lower_threshold = best.gk_withdrawal_limit_lower;
         nextParams.gk_allow_raises = (best.gk_raise_rate > 0);
       } else if (best.active_strategy === "Ratcheting") {
-        nextParams.ratchet_raise_rate = best.ratchet_raise_rate;
+         nextParams.ratchet_raise_rate = best.ratchet_raise_rate;
       }
 
       return nextParams;
@@ -1398,178 +1401,123 @@ const applyOptimizedStrategy = () => {
                   </div>
                 </div>
 
-                {optimizationResult && (
-  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '20px', display: 'flex', gap: '24px' }}>
-    
-    {/* Dynamic Strategy Card */}
-    <div style={{ flex: 1, backgroundColor: 'white', padding: '16px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+               {optimizationResult && Array.isArray(optimizationResult) && (
+  <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+    {optimizationResult.map((result, idx) => {
+      const { model, tax, optimal_strategy, history } = result;
+      const modelLabel = dynamicModels.uiModels[model] || model; 
       
-      {optimizationResult.optimal_strategy ? (
-        <>
-          <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Zap size={20} color="#3b82f6" />
-            Optimal Parameters Found
-          </h3>
+      return (
+        <div key={`${model}-${tax}`} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', backgroundColor: '#fff' }}>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', fontSize: '14px', color: '#334155' }}>
-            
-            {/* Universal Settings */}
-            <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Spending Algorithm</div>
-              <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
-                {optimizationResult.optimal_strategy.parameters.active_strategy}
-              </div>
-            </div>
-            
-            <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Yearly Spending</div>
-              <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
-                {formatEur(optimizationResult.optimal_strategy.parameters.withdrawal_rate * (params?.initial_investment || 0))}
-                <span style={{ fontWeight: 'normal', color: '#64748b', marginLeft: '6px', fontSize: '13px' }}>
-                  ({(optimizationResult.optimal_strategy.parameters.withdrawal_rate * 100).toFixed(2)}%)
-                </span>
-              </div>
-            </div>
-
-            <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cash Buffer Target</div>
-              <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
-                {optimizationResult.optimal_strategy.parameters.buffer_months} Months
-              </div>
-            </div>
-
-            {/* Dynamic Strategy Parameters */}
-            {/* Dynamic Strategy Parameters */}
-            
-            {optimizationResult.optimal_strategy.parameters.active_strategy === "Low Season Austerity" && (
-              <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Belt-Tightening Cut (Decimal)</div>
-                <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
-                  {Number(optimizationResult.optimal_strategy.parameters.low_season_cut_percentage || 0)}
-                </div>
-              </div>
-            )}
-
-            {optimizationResult.optimal_strategy.parameters.active_strategy === "Proportional Attenuator" && (
-              <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Maximum Dimming Floor (Decimal)</div>
-                <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
-                  {Number(optimizationResult.optimal_strategy.parameters.attenuator_max_cut)}
-                </div>
-              </div>
-            )}
-
-            {optimizationResult.optimal_strategy.parameters.active_strategy === "Guyton-Klinger" && (
-              <>
-                <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Upper Threshold (Decimal)</div>
-                  <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
-                    {Number(optimizationResult.optimal_strategy.parameters.gk_withdrawal_limit_upper)}
-                  </div>
-                </div>
-                <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lower Threshold (Decimal)</div>
-                  <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
-                    {Number(optimizationResult.optimal_strategy.parameters.gk_withdrawal_limit_lower)}
-                  </div>
-                </div>
-                <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Spending Cut Rate (Decimal)</div>
-                  <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
-                    {Number(optimizationResult.optimal_strategy.parameters.gk_cut_rate)}
-                  </div>
-                </div>
-                <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Spending Raise Rate (Decimal)</div>
-                  <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
-                    {Number(optimizationResult.optimal_strategy.parameters.gk_raise_rate)}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {optimizationResult.optimal_strategy.parameters.active_strategy === "Ratcheting" && (
-              <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ratchet Raise Rate (Decimal)</div>
-                <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px' }}>
-                  {Number(optimizationResult.optimal_strategy.parameters.ratchet_raise_rate)}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 'bold', color: '#16a34a', fontSize: '16px' }}>
-                Projected Success Rate: {(optimizationResult.optimal_strategy.metrics.success_rate * 100).toFixed(1)}%
-              </div>
-              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
-                Median Total Spend: {formatEur(optimizationResult.optimal_strategy.metrics.median_total_spend)}
-              </div>
-            </div>
+          <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h4 style={{ margin: 0, color: '#1e293b', fontSize: '18px' }}>
+              Optimized for: <span style={{ color: '#0284c7' }}>{modelLabel}</span> 
+              <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span> 
+              Tax Residency: <span style={{ color: '#0284c7' }}>{tax}</span>
+            </h4>
             <button 
-              onClick={applyOptimizedStrategy}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: 'background-color 0.2s' }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
+              onClick={() => applyOptimizedStrategy(optimal_strategy)}
+              style={{ backgroundColor: '#16a34a', color: '#fff', padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
             >
-              Apply to Form
+              Apply this Strategy
             </button>
           </div>
-        </>
-      ) : (
-        <div style={{ padding: '16px', backgroundColor: '#fff1f2', color: '#be123c', borderRadius: '6px', border: '1px solid #fecdd3', fontSize: '14px', height: '100%', boxSizing: 'border-box' }}>
-          <h4 style={{ margin: '0 0 8px 0', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            ⚠️ No viable strategy found
-          </h4>
-          <p style={{ margin: '0 0 12px 0', lineHeight: '1.5' }}>
-            None of the explored parameter sets achieved the target survival rate of <strong>{(optimizationConfig.target_success_rate * 100).toFixed(1)}%</strong>. 
-          </p>
-          <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.5', color: '#9f1239' }}>
-            <li>Try increasing the search iterations.</li>
-            <li>Increase your starting capital.</li>
-            <li>Accept a lower target success rate.</li>
-          </ul>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr', gap: '24px' }}>
+{/* Strategy Details Column */}
+<div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+  
+  {/* Standard Parameters */}
+  <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+    <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase' }}>Best Algorithm</div>
+    <div style={{ fontWeight: 'bold' }}>{optimal_strategy.parameters.active_strategy}</div>
+  </div>
+  
+  <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+    <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase' }}>Cash Buffer Target</div>
+    <div style={{ fontWeight: 'bold' }}>{optimal_strategy.parameters.buffer_months} months</div>
+  </div>
+
+  <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+    <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase' }}>Yearly Spending</div>
+    <div style={{ fontWeight: 'bold' }}>{formatEur(optimal_strategy.parameters.withdrawal_rate * (params?.initial_investment || 0))}</div>
+  </div>
+
+  <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+    <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase' }}>Success Rate</div>
+    <div style={{ fontWeight: 'bold', color: optimal_strategy.metrics.success_rate >= optimizationConfig.target_success_rate ? '#16a34a' : '#dc2626' }}>
+      {(optimal_strategy.metrics.success_rate * 100).toFixed(1)}%
+    </div>
+  </div>
+
+  {/* Conditional Strategy Tuning Parameters */}
+  {optimal_strategy.parameters.active_strategy === "Proportional Attenuator" && (
+    <div style={{ padding: '12px', backgroundColor: '#eef2ff', borderRadius: '6px', border: '1px solid #c7d2fe' }}>
+      <div style={{ fontSize: '12px', color: '#4f46e5', textTransform: 'uppercase', marginBottom: '4px', fontWeight: 'bold' }}>Attenuator Rules</div>
+      <div style={{ fontSize: '13px' }}>Max Cut: <strong>{(optimal_strategy.parameters.attenuator_max_cut * 100).toFixed(0)}%</strong></div>
+    </div>
+  )}
+
+  {optimal_strategy.parameters.active_strategy === "Guyton-Klinger" && (
+    <div style={{ padding: '12px', backgroundColor: '#eef2ff', borderRadius: '6px', border: '1px solid #c7d2fe' }}>
+      <div style={{ fontSize: '12px', color: '#4f46e5', textTransform: 'uppercase', marginBottom: '4px', fontWeight: 'bold' }}>G-K Rules</div>
+      <div style={{ fontSize: '13px', display: 'flex', justifyContent: 'space-between' }}>
+        <span>Cut: <strong>{(optimal_strategy.parameters.gk_cut_rate * 100).toFixed(1)}%</strong></span>
+        <span>Raise: <strong>{(optimal_strategy.parameters.gk_raise_rate * 100).toFixed(1)}%</strong></span>
+      </div>
+      <div style={{ fontSize: '13px', display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+        <span>Ceiling: <strong>{(optimal_strategy.parameters.gk_withdrawal_limit_upper * 100).toFixed(0)}%</strong></span>
+        <span>Floor: <strong>{(optimal_strategy.parameters.gk_withdrawal_limit_lower * 100).toFixed(0)}%</strong></span>
+      </div>
+    </div>
+  )}
+
+  {optimal_strategy.parameters.active_strategy === "Ratcheting" && (
+    <div style={{ padding: '12px', backgroundColor: '#eef2ff', borderRadius: '6px', border: '1px solid #c7d2fe' }}>
+      <div style={{ fontSize: '12px', color: '#4f46e5', textTransform: 'uppercase', marginBottom: '4px', fontWeight: 'bold' }}>Ratcheting Rules</div>
+      <div style={{ fontSize: '13px' }}>Raise Rate: <strong>{(optimal_strategy.parameters.ratchet_raise_rate * 100).toFixed(1)}%</strong></div>
+    </div>
+  )}
+</div>
+
+            <div style={{ height: '100%', minHeight: '230px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    type="number" 
+                    dataKey="parameters.withdrawal_rate" 
+                    name="Withdrawal" 
+                    tickFormatter={(v) => `${(v*100).toFixed(1)}%`} 
+                    domain={['auto', 'auto']}
+                  />
+                  <YAxis 
+                    type="number" 
+                    dataKey="metrics.success_rate" 
+                    name="Success" 
+                    tickFormatter={(v) => `${(v*100).toFixed(0)}%`} 
+                    domain={[0, 1]}
+                  />
+                  <ZAxis type="number" dataKey="metrics.median_total_spend" range={[50, 400]} name="Spend" />
+                  <Tooltip 
+                    cursor={{ strokeDasharray: '3 3' }}
+                    formatter={(value, name) => {
+                      if (name === 'Withdrawal') return `${(value*100).toFixed(2)}%`;
+                      if (name === 'Success') return `${(value*100).toFixed(1)}%`;
+                      if (name === 'Spend') return formatEur(value);
+                      return value;
+                    }}
+                  />
+                  <Scatter name="Strategies" data={history} fill="#8b5cf6" fillOpacity={0.6} />
+                  <ReferenceLine y={optimizationConfig.target_success_rate} stroke="#ef4444" strokeDasharray="3 3" />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
-      )}
-    </div>
-
-    {/* Fitness Landscape Visualization */}
-    <div style={{ flex: 2, height: '350px' }}>
-      <h4 style={{ margin: '0 0 12px 0', color: '#0f172a', textAlign: 'center', fontSize: '14px' }}>Search Landscape (Withdrawal Rate vs Success)</h4>
-      <ResponsiveContainer width="100%" height="100%">
-        <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 20 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis 
-            type="number" 
-            dataKey="parameters.withdrawal_rate" 
-            name="Withdrawal" 
-            tickFormatter={(v) => `${(v*100).toFixed(1)}%`} 
-            domain={['auto', 'auto']}
-          />
-          <YAxis 
-            type="number" 
-            dataKey="metrics.success_rate" 
-            name="Success" 
-            tickFormatter={(v) => `${(v*100).toFixed(0)}%`} 
-            domain={[0, 1]}
-          />
-          <ZAxis type="number" dataKey="metrics.median_total_spend" range={[50, 400]} name="Spend" />
-          <Tooltip 
-            cursor={{ strokeDasharray: '3 3' }}
-            formatter={(value, name) => {
-              if (name === 'Withdrawal') return `${(value*100).toFixed(2)}%`;
-              if (name === 'Success') return `${(value*100).toFixed(1)}%`;
-              if (name === 'Spend') return formatEur(value);
-              return value;
-            }}
-          />
-          <Scatter name="Strategies" data={optimizationResult.history} fill="#8b5cf6" fillOpacity={0.6} />
-          <ReferenceLine y={optimizationConfig.target_success_rate} stroke="red" strokeDasharray="3 3" />
-        </ScatterChart>
-      </ResponsiveContainer>
-    </div>
-
+      );
+    })}
   </div>
 )}
 

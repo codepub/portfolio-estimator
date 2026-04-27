@@ -227,7 +227,7 @@ class PortfolioSimulator:
         # Heston parameters
         v_t = annual_volatility**2
         theta = annual_volatility**2
-        kappa = 2.0
+        kappa = 2.5
         xi = 0.4
         rho = -0.7
     
