@@ -306,7 +306,7 @@ const applyOptimizedStrategy = (optimal_strategy) => {
           let finalValue = 0; 
           let depletionMonth = null; 
           let isBridgedByPension = false; 
-          let povertyMonth = null; 
+          let destitutionMonth = null; 
           
           const lastMonthData = chartData[chartData.length - 1];
           
@@ -325,8 +325,8 @@ const applyOptimizedStrategy = (optimal_strategy) => {
             const nominalSpend = chartData[i][`${model}_${tax}_spend`] !== undefined ? chartData[i][`${model}_${tax}_spend`] : chartData[i][`${model}_spend`];
             if (nominalSpend !== undefined && nominalSpend > 0) {
               const realSpend = nominalSpend / Math.pow(1 + params.inflation_percentage, i / 12);
-              if (realSpend < params.poverty_threshold && !povertyMonth) {
-                povertyMonth = chartData[i].month;
+              if (realSpend < params.destitution_threshold && !destitutionMonth) {
+                destitutionMonth = chartData[i].month;
               }
              }
           } 
@@ -350,7 +350,7 @@ const applyOptimizedStrategy = (optimal_strategy) => {
             finalValue, 
             depletionMonth, 
             isBridgedByPension, 
-            povertyMonth, 
+            destitutionMonth, 
             annualizedVol 
           });
         });
@@ -361,7 +361,7 @@ const applyOptimizedStrategy = (optimal_strategy) => {
         if (a.finalValue > 0) return -1; if (b.finalValue > 0) return 1;
         return (b.depletionMonth || 0) - (a.depletionMonth || 0);
       });
-    }, [chartData, activeModels, params?.tax_residencies, dynamicModels, params?.inflation_percentage, params?.poverty_threshold]);
+    }, [chartData, activeModels, params?.tax_residencies, dynamicModels, params?.inflation_percentage, params?.destitution_threshold]);
     
     const toggleLineVisibility = (dataKey) => { setHiddenLines(prev => prev.includes(dataKey) ? prev.filter(k => k !== dataKey) : [...prev, dataKey]); };
     
@@ -483,10 +483,10 @@ const applyOptimizedStrategy = (optimal_strategy) => {
               <div style={inputGroupStyle}><label style={labelStyle}>Inflation Rate (Decimal)</label><input type="number" name="inflation_percentage" value={params.inflation_percentage} onChange={handleChange} step="0.01" style={inputStyle} /></div>
               
               <div style={inputGroupStyle}>
-                <label style={labelStyle} title="If inflation-adjusted monthly spending falls below this, the timeline is flagged as 'Poverty' even if the portfolio survives.">
-                  Poverty Disqualifier Threshold (€/mo Real) ℹ️
+                <label style={labelStyle} title="If inflation-adjusted monthly spending falls below this, the timeline is flagged as 'Destitution' even if the portfolio survives.">
+                  Destitution Disqualifier Threshold (€/mo Real) ℹ️
                 </label>
-                <input type="number" name="poverty_threshold" value={params.poverty_threshold} onChange={handleChange} style={inputStyle} />
+                <input type="number" name="destitution_threshold" value={params.destitution_threshold} onChange={handleChange} style={inputStyle} />
               </div>
 
               {/* --- ALGORITHMIC SPENDING CONTROL MASTER CONTAINER --- */}
@@ -1222,8 +1222,8 @@ const applyOptimizedStrategy = (optimal_strategy) => {
                             <td style={{ padding: '12px 16px' }}><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke="#4b5563" strokeWidth="2" strokeDasharray={dynamicModels.taxStyles[stat.tax]} /></svg>{stat.taxName}</div></td>
                             <td style={{ padding: '12px 16px' }}>
                               {stat.finalValue > 0 
-                                ? (stat.povertyMonth 
-                                  ? <span style={{ color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Poverty {formatMonthYear(stat.povertyMonth)}</span>
+                                ? (stat.destitutionMonth 
+                                  ? <span style={{ color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Destitution {formatMonthYear(stat.destitutionMonth)}</span>
                                   : <span style={{ color: '#166534', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Sustainable</span>)
                                 : stat.isBridgedByPension
                                   ? <span style={{ color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>Unsustainable {formatMonthYear((stat.depletionMonth || 1))}</span>
@@ -1259,7 +1259,7 @@ const applyOptimizedStrategy = (optimal_strategy) => {
                         🔄 Find Required Capital: Reverse solver
                     </h3>
                     <p style={{ margin: 0, fontSize: '13px', color: '#0c4a6e', maxWidth: '600px', lineHeight: '1.4' }}>
-                      Calculates the <strong>Initial Capital</strong> needed to survive the timeline you configured on the left, while ensuring your real monthly spending never drops below your €{params.poverty_threshold}/mo poverty floor.
+                      Calculates the <strong>Initial Capital</strong> needed to survive the timeline you configured on the left, while ensuring your real monthly spending never drops below your €{params.destitution_threshold}/mo destitution floor.
                     </p>
                   </div>
                   <button 

@@ -12,7 +12,7 @@ Unlike standard retirement calculators that rely on static averages and normal d
 
 The simulation engine generates up to 600-month (50-year) timelines utilizing three distinct growth frameworks, governed by a strict, global survival floor.
 
-**The Poverty Disqualifier (The Absolute Floor):** A globally enforced hard limit defined in "today's money" (e.g., €600/month). Regardless of the active spending protocol or market conditions, if inflation-adjusted real spending drops below this threshold in *any* month, the timeline is mathematically flagged as a catastrophic failure.
+**The Destitution Disqualifier (The Absolute Floor):** A globally enforced hard limit defined in "today's money" (e.g., €600/month). Regardless of the active spending protocol or market conditions, if inflation-adjusted real spending drops below this threshold in *any* month, the timeline is mathematically flagged as a catastrophic failure.
 
 **Historical Slicing:** Extracts exact sequences of actual monthly market returns (e.g., S&P 500, EURO STOXX 50, OMXHPI) and natively loops them to test specific macroeconomic conditions (e.g., retiring into the Dot-Com crash or the 1970s stagflation era).
 
@@ -26,7 +26,7 @@ The simulation engine generates up to 600-month (50-year) timelines utilizing th
 
 Instead of running a standard forward simulation ("What happens to my €1,000,000?"), the Targeting Computer utilizes a heavily parallelized binary search to invert the physics: *"What is the absolute minimum capital required to survive?"*
 
-* **P10 Optimization:** To guarantee a 90% success rate, the engine autonomously isolates the Worst 10% (P10) timeline from a thousand stochastic futures and mathematically solves for the exact starting mass required to keep that specific, hostile timeline above the Poverty Disqualifier.
+* **P10 Optimization:** To guarantee a 90% success rate, the engine autonomously isolates the Worst 10% (P10) timeline from a thousand stochastic futures and mathematically solves for the exact starting mass required to keep that specific, hostile timeline above the Destitution Disqualifier.
 * **The Cost of Safety:** By running concurrent searches for the Median, Best 10%, and Worst 10% futures, the system exposes the exact capital premium required to insure against tail-risk events.
 * **Psychological Binning:** The engine records the exact lived experience of the worst-case scenario, sorting the 50-year timeline into human-scale impact bins: 100% Full Lifestyle, 95-99% (Invisible Micro-Trims), 85-94% (Noticeable Cuts), and <85% (Deep Austerity), alongside capturing the absolute "Deepest Cut" experienced.
 

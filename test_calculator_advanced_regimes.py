@@ -617,7 +617,7 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
     def test_minimum_capital_six_way_search_with_bins(self):
         """
         Binary search targeting: €60,000/yr P10 survival.
-        Poverty threshold: €30,000/yr real spend.
+        Destitution threshold: €30,000/yr real spend.
         Compares 6 regimes (including pure Constant Spend).
         Outputs a 4-bin histogram of the lived experience (Years spent at various spending levels).
         """
@@ -630,7 +630,7 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
         total_months = 600
         inflation_rate = 0.02
         target_spend = 60000.0
-        poverty_threshold_annual = 30000.0  
+        destitution_threshold_annual = 30000.0  
         
         print(f"\n[INIT] Generating frozen matrix of {iterations} Heston timelines...")
         rates_matrix = [self.simulator._generate_heston_returns(0.07, 0.225, total_months) for _ in range(iterations)]
@@ -681,14 +681,14 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
                 timeline_results.sort(key=lambda x: x['final_wealth'])
                 p10_outcome = timeline_results[int(iterations * 0.10)]
                 
-                if p10_outcome['final_wealth'] > 0 and p10_outcome['min_real_spend'] >= poverty_threshold_annual:
+                if p10_outcome['final_wealth'] > 0 and p10_outcome['min_real_spend'] >= destitution_threshold_annual:
                     best_safe_capital = test_cap
                     best_p10_spends = p10_outcome['spends']
                     high = test_cap 
                     print(f" [PASS] €{test_cap:<10,.0f} -> Survived P10 (Min Spend: €{p10_outcome['min_real_spend']:,.0f})")
                 else:
                     low = test_cap  
-                    fail_reason = "Bankrupt" if p10_outcome['final_wealth'] <= 0 else f"Poverty (Hit €{p10_outcome['min_real_spend']:,.0f})"
+                    fail_reason = "Bankrupt" if p10_outcome['final_wealth'] <= 0 else f"Destitution (Hit €{p10_outcome['min_real_spend']:,.0f})"
                     print(f" [FAIL] €{test_cap:<10,.0f} -> {fail_reason} in P10")
             
             # Categorize the 50 years of the winning P10 timeline into 4 bins
@@ -741,7 +741,7 @@ class TestSimulatorAdvancedRegimes(unittest.TestCase):
                            'attenuator_max_cut': 0.50, 'enable_low_season_spend': False})
 
         print("="*110)
-        print(f" TARGETING: Minimum Capital for €{target_spend:,.0f}/yr (Poverty Floor: €{poverty_threshold_annual:,.0f}/yr)")
+        print(f" TARGETING: Minimum Capital for €{target_spend:,.0f}/yr (Destitution Floor: €{destitution_threshold_annual:,.0f}/yr)")
         print("="*110)
         
         results = [

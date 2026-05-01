@@ -84,7 +84,7 @@ class SimulationParams(BaseModel):
     initial_profit_percentage: float = 0.40
     yearly_spending: float = 40000.0
     inflation_percentage: float = 0.02
-    poverty_threshold: float = 600.0          
+    destitution_threshold: float = 600.0          
     pensions: List[PensionInput] = []
     pensions_inflation_adjusted: bool = True
     cash_events: List[CashEventInput] = []
@@ -168,7 +168,7 @@ def evaluate_strategy(simulator, params_variant: dict, paths: int) -> Tuple[floa
 
     inflation_rate = params_variant.get('inflation_percentage', 0.02)
     monthly_inflation_rate = (1 + inflation_rate) ** (1/12) - 1
-    poverty_threshold = params_variant.get('poverty_threshold', 600.0)
+    destitution_threshold = params_variant.get('destitution_threshold', 600.0)
 
     for _ in range(actual_paths):
         results = simulator.run_simulation(params_variant)
@@ -192,7 +192,7 @@ def evaluate_strategy(simulator, params_variant: dict, paths: int) -> Tuple[floa
         
         final_value = results[-1].get(value_key, 0)
         
-        if final_value > 0 and min_real_monthly_spend >= poverty_threshold:
+        if final_value > 0 and min_real_monthly_spend >= destitution_threshold:
             success_count += 1
             
     success_rate = success_count / actual_paths if actual_paths > 0 else 0
@@ -347,13 +347,13 @@ def optimize_strategy(req: OptimizationRequest):
 def find_minimum_capital(params: dict = Body(...)):
     """
     Inverts the simulation: Finds the absolute minimum starting capital required 
-    to survive the timeline while maintaining the Poverty Disqualifier floor.
+    to survive the timeline while maintaining the Destitution Disqualifier floor.
     Executes timelines concurrently using a multiprocessing pool.
     """
 
     total_months = (params['simulation_end_year'] - params['simulation_start_year']) * 12
     iterations = params.get('stochastic_iterations', 100)
-    poverty_threshold_annual = params.get('poverty_threshold', 600) * 12
+    destitution_threshold_annual = params.get('destitution_threshold', 600) * 12
     
     # 1. Pre-generate and freeze timelines for fair binary searching
     frozen_timelines = {}
@@ -482,7 +482,7 @@ def find_minimum_capital(params: dict = Body(...)):
                         final_wealth = res[total_months]['value']
                         min_spend = min(annual_real_spends)
                         
-                        is_safe = final_wealth > 0 and min_spend >= poverty_threshold_annual
+                        is_safe = final_wealth > 0 and min_spend >= destitution_threshold_annual
                         
                         if is_safe:
                             surviving_paths += 1

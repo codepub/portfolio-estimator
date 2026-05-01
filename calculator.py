@@ -727,9 +727,9 @@ class PortfolioSimulator:
                     annual_rate = params.get('linear_rate', 0.07)
                     annual_vol = params.get('stochastic_volatility', 0.13)
                     
-                    # Pull poverty variables for the strict sort
+                    # Pull destitution variables for the strict sort
                     monthly_inflation_rate = (1 + params.get('inflation_percentage', 0.02)) ** (1/12) - 1
-                    poverty_threshold_annual = params.get('poverty_threshold', 600.0) * 12
+                    destitution_threshold_annual = params.get('destitution_threshold', 600.0) * 12
 
                     for _ in range(iterations):
                         if engine_choice == 'heston':
@@ -753,7 +753,7 @@ class PortfolioSimulator:
                         min_spend = min(annual_real_spends) if annual_real_spends else 0
                         final_wealth = run[total_months]['value']
                         
-                        is_safe = final_wealth > 0 and min_spend >= poverty_threshold_annual
+                        is_safe = final_wealth > 0 and min_spend >= destitution_threshold_annual
                         
                         # Primary sort: Failed paths (0) sort below Safe paths (1).
                         # Secondary sort: Within each group, sort by final wealth.
