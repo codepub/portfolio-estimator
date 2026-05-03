@@ -1197,7 +1197,13 @@ const applyOptimizedStrategy = (optimal_strategy) => {
                         return (evMonthRelative > 0 && evMonthRelative <= totalSimulationMonths) ? <ReferenceLine yAxisId="left" key={`ref-buftgt-${i}`} x={evMonthRelative} stroke="#0d9488" isFront={true} label={{ value: `Buffer Tgt: ${ev.target_months}mo`, position: 'insideTopRight', fill: '#0f766e', fontSize: 12 }} /> : null; 
                       })}
                       {activeModels.map(model => params.tax_residencies.map(tax => <Line yAxisId="left" key={`${model}_${tax}`} type="monotone" dataKey={`${model}_${tax}_value`} name={`${dynamicModels.displayNames[model] || model} (${tax.replace(/_/g, ' ')})`} stroke={dynamicModels.displayColors[model] || '#000'} strokeDasharray={dynamicModels.taxStyles[tax]} strokeWidth={2} dot={false} isAnimationActive={false} hide={hiddenLines.includes(`${model}_${tax}_value`)} />))}
-                      
+                      {(params.rebalancing_events || []).map((ev, i) => { 
+                        const evMonthRelative = ((ev.year - params.simulation_start_year) * 12) + ev.month - params.simulation_start_month + 1;
+                        const totalSimulationMonths = (params.simulation_end_year - params.simulation_start_year) * 12;
+                        return (evMonthRelative > 0 && evMonthRelative <= totalSimulationMonths) ? (
+                          <ReferenceLine yAxisId="left" key={`ref-reb-${i}`} x={evMonthRelative} stroke="#475569" isFront={true} label={{ value: `Rebalance ${(ev.percentage * 100).toFixed(0)}%`, position: 'insideTop', fill: '#334155', fontSize: 12 }} /> 
+                        ) : null; 
+                      })}
                       {activeModels.map(model => {
                         const isModelHidden = params.tax_residencies.every(tax => hiddenLines.includes(`${model}_${tax}_value`));
                         return <Line yAxisId="right" key={`${model}_return`} type="monotone" dataKey={`${model}_return`} name={`${dynamicModels.displayNames[model] || model} Return`} stroke={dynamicModels.displayColors[model] || '#000'} strokeDasharray="2 4" strokeWidth={1} dot={false} isAnimationActive={false} hide={isModelHidden} />;
@@ -1242,6 +1248,8 @@ const applyOptimizedStrategy = (optimal_strategy) => {
                         const totalSimulationMonths = (params.simulation_end_year - params.simulation_start_year) * 12;
                         return (evMonthRelative > 0 && evMonthRelative <= totalSimulationMonths) ? <ReferenceLine yAxisId="left" key={`ref-buftgt-bot-${i}`} x={evMonthRelative} stroke="#0d9488" isFront={true} /> : null; 
                       })}
+                      
+                      
                       {activeModels.map(model => {
                         const isModelHidden = params.tax_residencies.every(tax => hiddenLines.includes(`${model}_${tax}_value`));
                         return (
@@ -1257,6 +1265,13 @@ const applyOptimizedStrategy = (optimal_strategy) => {
                             ))}
                           </React.Fragment>
                         );
+                      })}
+                      {(params.rebalancing_events || []).map((ev, i) => { 
+                        const evMonthRelative = ((ev.year - params.simulation_start_year) * 12) + ev.month - params.simulation_start_month + 1;
+                        const totalSimulationMonths = (params.simulation_end_year - params.simulation_start_year) * 12;
+                        return (evMonthRelative > 0 && evMonthRelative <= totalSimulationMonths) ? (
+                          <ReferenceLine yAxisId="left" key={`ref-reb-bot-${i}`} x={evMonthRelative} stroke="#475569"  isFront={true} /> 
+                        ) : null; 
                       })}
                     </LineChart>
                   </ResponsiveContainer>
