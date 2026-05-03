@@ -96,6 +96,7 @@ class SimulationParams(BaseModel):
     stochastic_engine: str = "gbm"
     stochastic_volatility: float = 0.13
     stochastic_iterations: int = 100
+    first_possible_downturn_year: int = 0
     simulation_start_year: int = datetime.now().year
     simulation_start_month: int = (datetime.now().month % 12) + 1
     simulation_end_year: int = datetime.now().year + 50
@@ -359,12 +360,11 @@ def find_minimum_capital(params: dict = Body(...)):
     frozen_timelines = {}
     if 'stochastic' in params.get('growth_models', []):
         random.seed(10000) # Lock universe for monotonic search
-        vol = params.get('stochastic_volatility', 0.13)
-        if params.get('stochastic_engine') == 'heston':
-            frozen_timelines['stochastic'] = [simulator._generate_heston_returns(params.get('linear_rate', 0.07), vol, total_months) for _ in range(iterations)]
-        else:
-            frozen_timelines['stochastic'] = [simulator._generate_gbm_returns(params.get('linear_rate', 0.07), vol, total_months) for _ in range(iterations)]
-    
+        frozen_timelines['stochastic'] = [
+            simulator.generate_filtered_stochastic_timeline(params, total_months) 
+            for _ in range(iterations)
+        ]
+        
     results = []
     
     search_models = []

@@ -230,6 +230,7 @@ class PortfolioSimulator:
         kappa = 2.5
         xi = 0.4
         rho = -0.7
+        x = math.sqrt(1 - rho**2)
     
         # Intrinsic Valuation Anchor parameters
         reversion_strength = 0.05
@@ -237,7 +238,7 @@ class PortfolioSimulator:
         trend_index = 100.0
     
         returns = []
-    
+
         for _ in range(total_months):
             # 1. Calculate the valuation premium at the START of the month.
             # Keeping this at the macro level prevents micro-oscillations.
@@ -251,7 +252,7 @@ class PortfolioSimulator:
                 z1 = random.gauss(0, 1)
                 z2 = random.gauss(0, 1)
                 z_s = z1
-                z_v = rho * z1 + math.sqrt(1 - rho**2) * z2
+                z_v = rho * z1 + x*z2
             
                 # Full Truncation scheme: only use the positive part for the drift and diffusion
                 v_t_plus = max(v_t, 0.0)
@@ -273,6 +274,55 @@ class PortfolioSimulator:
 
         return returns
     
+    def generate_filtered_stochastic_timeline(self, params, total_months):
+        """
+        Generates a stochastic return sequence, applying rejection sampling 
+        to ensure the first N years do not yield a negative compound return.
+        """
+        engine_choice = params.get('stochastic_engine', 'gbm')
+        annual_rate = params.get('linear_rate', 0.07)
+        annual_vol = params.get('stochastic_volatility', 0.13)
+        first_possible_downturn_year = params.get('first_possible_downturn_year', 0)
+        
+        max_attempts = 50
+        attempts = 0
+        stoch_rates = []
+
+        while attempts < max_attempts:
+            attempts += 1
+            
+            if engine_choice == 'heston':
+                stoch_rates = self._generate_heston_returns(annual_rate, annual_vol, total_months)
+            else:
+                stoch_rates = self._generate_gbm_returns(annual_rate, annual_vol, total_months)
+
+            if first_possible_downturn_year > 0:
+                early_downturn_detected = False
+                
+                for y in range(first_possible_downturn_year):
+                    start_m = y * 12
+                    end_m = (y + 1) * 12
+                    
+                    if end_m > len(stoch_rates):
+                        break
+                        
+                    year_multiplier = 1.0
+                    for m in range(start_m, end_m):
+                        year_multiplier *= (1 + stoch_rates[m])
+                        
+                    if year_multiplier < 1.0:
+                        early_downturn_detected = True
+                        break
+                        
+                if early_downturn_detected:
+                    continue # Reject and redraw
+
+            return stoch_rates # Valid timeline found
+
+        # Circuit breaker fallback: return the last generated sequence 
+        # to prevent the system from hanging on impossible constraints.
+        return stoch_rates
+
     def _run_single_timeline(self, params, rates, tax_res, start_year, start_month, total_months):
         results = {}
         portfolio_value = params['initial_investment']
@@ -716,26 +766,22 @@ class PortfolioSimulator:
                         rates.append((1 + history[cal_year % len(history)]['return']) ** (1/12) - 1)
             static_rates[model] = rates
 
-        # EXECUTION PHASE
+# EXECUTION PHASE
         for model in models_to_run:
             for tax_res in taxes_to_run:
                 if model == 'stochastic':
                     iterations = params.get('stochastic_iterations', 100)
                     all_runs = []
                     
-                    engine_choice = params.get('stochastic_engine', 'gbm')
-                    annual_rate = params.get('linear_rate', 0.07)
-                    annual_vol = params.get('stochastic_volatility', 0.13)
-                    
                     # Pull destitution variables for the strict sort
                     monthly_inflation_rate = (1 + params.get('inflation_percentage', 0.02)) ** (1/12) - 1
                     destitution_threshold_annual = params.get('destitution_threshold', 600.0) * 12
 
+                    # --- SIMPLIFIED LOOP ---
+                    # We simply ask the new method to generate a valid timeline. 
+                    # The complex rejection logic is hidden inside that method call.
                     for _ in range(iterations):
-                        if engine_choice == 'heston':
-                            stoch_rates = self._generate_heston_returns(annual_rate, annual_vol, total_months)
-                        else:
-                            stoch_rates = self._generate_gbm_returns(annual_rate, annual_vol, total_months)
+                        stoch_rates = self.generate_filtered_stochastic_timeline(params, total_months)
 
                         safe_params = copy.deepcopy(params)                              
                         run_result = self._run_single_timeline(safe_params, stoch_rates, tax_res, start_year, start_month, total_months)
@@ -762,22 +808,26 @@ class PortfolioSimulator:
                     all_runs.sort(key=get_sort_key)
                     # --------------------------------
 
-                    p10_run = all_runs[int(iterations * 0.10)]
-                    p50_run = all_runs[int(iterations * 0.50)]
-                    p90_run = all_runs[int(iterations * 0.90)]
+                    # Extract the percentiles
+                    actual_iterations = len(all_runs)
+                    if actual_iterations > 0:
+                        p10_run = all_runs[int(actual_iterations * 0.10)]
+                        p50_run = all_runs[int(actual_iterations * 0.50)]
+                        p90_run = all_runs[int(actual_iterations * 0.90)]
 
-                    for month in range(1, total_months + 1):
-                        for prefix, data in [("stochastic_10", p10_run[month]), 
-                                             ("stochastic_50", p50_run[month]), 
-                                             ("stochastic_90", p90_run[month])]:
-                            merged_results[month][f"{prefix}_{tax_res}_value"] = data["value"]
-                            merged_results[month][f"{prefix}_{tax_res}_buffer_val"] = data["buffer_val"]
-                            merged_results[month][f"{prefix}_{tax_res}_w_inv"] = data["w_inv"]
-                            merged_results[month][f"{prefix}_{tax_res}_w_buf"] = data["w_buf"]
-                            merged_results[month][f"{prefix}_{tax_res}_w_pen"] = data["w_pen"]
-                            merged_results[month][f"{prefix}_return"] = data["return"]
-                            merged_results[month][f"{prefix}_{tax_res}_spend"] = data.get("spend", 0.0)
-                            merged_results[month][f"{prefix}_{tax_res}_austerity"] = data.get("austerity", False)
+                        for month in range(1, total_months + 1):
+                            for prefix, data in [("stochastic_10", p10_run[month]), 
+                                                 ("stochastic_50", p50_run[month]), 
+                                                 ("stochastic_90", p90_run[month])]:
+                                merged_results[month][f"{prefix}_{tax_res}_value"] = data["value"]
+                                merged_results[month][f"{prefix}_{tax_res}_buffer_val"] = data["buffer_val"]
+                                merged_results[month][f"{prefix}_{tax_res}_w_inv"] = data["w_inv"]
+                                merged_results[month][f"{prefix}_{tax_res}_w_buf"] = data["w_buf"]
+                                merged_results[month][f"{prefix}_{tax_res}_w_pen"] = data["w_pen"]
+                                merged_results[month][f"{prefix}_return"] = data["return"]
+                                merged_results[month][f"{prefix}_{tax_res}_spend"] = data.get("spend", 0.0)
+                                merged_results[month][f"{prefix}_{tax_res}_austerity"] = data.get("austerity", False)
+                                
                 else:
                     rates = []
                     
