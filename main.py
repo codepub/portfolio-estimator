@@ -79,6 +79,11 @@ class RelocationInput(BaseModel):
     month: int
     new_regime: str
 
+class RebalancingEventInput(BaseModel):
+    year: int
+    month: int
+    percentage: float  # Value between 0.0 (0%) and 1.0 (100%)
+
 class SimulationParams(BaseModel):
     initial_investment: float = 1000000.0
     initial_profit_percentage: float = 0.40
@@ -91,6 +96,8 @@ class SimulationParams(BaseModel):
     relocations: List[RelocationInput] = []
     spending_events: List[SpendingEventInput] = []
     buffer_target_events: List[BufferTargetEventInput] = []
+    rebalancing_events: List[RebalancingEventInput] = []
+    rebalancing_default: float = 0.2
     growth_models: List[str] = ["linear"]
     linear_rate: float = 0.07
     stochastic_engine: str = "gbm"

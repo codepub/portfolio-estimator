@@ -544,6 +544,50 @@ class PortfolioSimulator:
                 event_abs_month = (event['year'] * 12) + event['month'] - 1
                 if current_absolute_month == event_abs_month:
                     current_buffer_target_months = event['target_months']
+           
+            # --- PORTFOLIO REBALANCING EVENTS ---
+            for event in params.get('rebalancing_events', []):
+                event_abs_month = (event['year'] * 12) + event['month'] - 1
+                if current_absolute_month == event_abs_month:
+                    rebalance_pct = max(0.0, min(1.0, event.get('percentage', 0.0)))
+                    
+                    if rebalance_pct > 0 and portfolio_value > 0:
+                        # 1. Determine current tax regime for the exact time of the event
+                        active_event_tax_res = tax_res
+                        for reloc in params.get('relocations', []):
+                            reloc_abs_month = (reloc['year'] * 12) + reloc['month'] - 1
+                            if current_absolute_month >= reloc_abs_month:
+                                active_event_tax_res = reloc['new_regime']
+                                
+                        tax_config = self.taxes.get("capital_gains", {}).get(active_event_tax_res)
+                        
+                        if tax_config:
+                            # 2. Determine current overall profit percentage
+                            current_profit_pct = max(0.0, (portfolio_value - total_principal) / portfolio_value)
+                            
+                            # 3. Calculate gross rebalance amount and the net proceeds after tax
+                            gross_rebalance = portfolio_value * rebalance_pct
+                            net_reinvested = self._calculate_net_from_gross(
+                                gross_rebalance, 
+                                current_profit_pct, 
+                                tax_config, 
+                                current_year_gains_withdrawn
+                            )
+                            
+                            tax_paid = gross_rebalance - net_reinvested
+                            
+                            # 4. Apply the tax drag to the portfolio value
+                            portfolio_value -= tax_paid
+                            
+                            # 5. Reset the cost basis (principal) for the rebalanced portion.
+                            # The un-rebalanced portion keeps its original principal ratio, 
+                            # while the reinvested net proceeds become 100% principal.
+                            total_principal_kept = total_principal * (1.0 - rebalance_pct)
+                            total_principal = total_principal_kept + net_reinvested
+                            
+                            # 6. Accumulate realized gains so subsequent standard withdrawals 
+                            # in the same year are pushed into the correct progressive tax brackets.
+                            current_year_gains_withdrawn += (gross_rebalance * current_profit_pct)
 
             total_net_pension_this_month = 0
             for i, pension in enumerate(params['pensions']):

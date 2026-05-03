@@ -410,6 +410,28 @@ const applyOptimizedStrategy = (optimal_strategy) => {
     const updateBufferTargetEvent = (index, field, value) => { setParams(prev => { const newArr = [...prev.buffer_target_events]; newArr[index][field] = parseInt(value) || 0; return { ...prev, buffer_target_events: newArr }; }); };
     const removeBufferTargetEvent = (index) => { setParams(prev => ({ ...prev, buffer_target_events: prev.buffer_target_events.filter((_, i) => i !== index) })); };
 
+    const addRebalancingEvent = () => { 
+      setParams(prev => ({ 
+        ...prev, 
+        rebalancing_events: [...(prev.rebalancing_events || []), { percentage: params.rebalancing_default, year: params.simulation_start_year + 5, month: 1 }] 
+      })); 
+    };
+
+    const updateRebalancingEvent = (index, field, value) => { 
+      setParams(prev => { 
+        const newArr = [...prev.rebalancing_events]; 
+        newArr[index][field] = field === 'percentage' ? parseFloat(value) || 0 : parseInt(value) || 0; 
+        return { ...prev, rebalancing_events: newArr }; 
+      }); 
+    };
+
+    const removeRebalancingEvent = (index) => { 
+      setParams(prev => ({ 
+        ...prev, 
+        rebalancing_events: prev.rebalancing_events.filter((_, i) => i !== index) 
+      })); 
+    };
+
     const inputGroupStyle = { marginBottom: '16px' };
     const labelStyle = { display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '14px' };
     const inputStyle = { width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' };
@@ -1029,6 +1051,39 @@ const applyOptimizedStrategy = (optimal_strategy) => {
                   </div>
                 ))}
               </div>
+
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px', marginTop: '24px', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0 }}>Portfolio Rebalancing</h4>
+                <button onClick={addRebalancingEvent} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '4px', color: '#334155', fontWeight: 'bold' }}>
+                  <PlusCircle size={16} /> Add
+                </button>
+              </div>
+              {(params.rebalancing_events || []).map((ev, index) => (
+                <div key={`reb-${index}`} style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', borderBottom: '1px solid #cbd5e1', paddingBottom: '4px' }}>
+                    <strong style={{ fontSize: '14px', color: '#334155' }}>Rebalance Event {index + 1}</strong>
+                    <button onClick={() => removeRebalancingEvent(index)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  <div style={{ ...inputGroupStyle, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                    <label style={labelStyle}>Rebalance Amount (Decimal, e.g. 0.20 for 20%)</label>
+                    <input type="number" step="0.01" min="0" max="1" value={ev.percentage} onChange={(e) => updateRebalancingEvent(index, 'percentage', e.target.value)} style={inputStyle} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={labelStyle}>Year</label>
+                      <input type="number" value={ev.year} onChange={(e) => updateRebalancingEvent(index, 'year', e.target.value)} style={inputStyle} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={labelStyle}>Month</label>
+                      <input type="number" value={ev.month} onChange={(e) => updateRebalancingEvent(index, 'month', e.target.value)} min="1" max="12" style={inputStyle} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
 
               {isLoading && ( <p style={{ color: '#0066cc', fontWeight: 'bold' }}>Simulating {params.growth_models.includes('stochastic') ? params.stochastic_iterations : 1} timeline(s)...</p> )}
               {error && <p style={{ color: 'red' }}>Error: {error}</p>}
