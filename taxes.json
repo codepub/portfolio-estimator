@@ -55,6 +55,54 @@
       "rate": 0.10
     }
   },
+  "interest_income": {
+    "Finland": {
+      "type": "flat",
+      "description": "Flat 30% Source Tax (Lähdevero) on domestic bank account interest.",
+      "rate": 0.30
+    },
+    "Finland for 2 people": {
+      "type": "flat",
+      "description": "Flat 30% Source Tax (Lähdevero) on domestic bank account interest.",
+      "rate": 0.30
+    },
+    "Czech_Republic": {
+      "type": "flat",
+      "description": "Flat 15% withholding tax on domestic bank interest. Unlike investments, there is no 3-year time test exemption.",
+      "rate": 0.15
+    },
+    "Italy_General": {
+      "type": "flat",
+      "description": "Flat 26% final withholding tax on standard bank and postal accounts.",
+      "rate": 0.26
+    },
+    "Italy_7_Percent": {
+      "type": "flat",
+      "description": "Flat 7% applies to foreign-sourced bank interest under the southern retiree regime.",
+      "rate": 0.07
+    },
+    "Spain_Madrid_Andalusia": {
+      "type": "tiered",
+      "description": "Interest goes into the general savings base and stacks with capital gains using the same 19-28% progressive brackets.",
+      "brackets": [
+        { "limit": 6000, "rate": 0.19 },
+        { "limit": 50000, "rate": 0.21 },
+        { "limit": 200000, "rate": 0.23 },
+        { "limit": 300000, "rate": 0.27 },
+        { "limit": null, "rate": 0.28 }
+      ]
+    },
+    "Portugal_General": {
+      "type": "flat",
+      "description": "Flat 28% withholding tax on standard bank deposits.",
+      "rate": 0.28
+    },
+    "Bulgaria": {
+      "type": "flat",
+      "description": "0% tax on bank interest from EU/EEA accounts (tax-free as of 2022).",
+      "rate": 0.00
+    }
+  },
   "pension_income": {
     "Finland": {
       "type": "progressive_estimate",

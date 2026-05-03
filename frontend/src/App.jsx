@@ -671,6 +671,11 @@ const applyOptimizedStrategy = (optimal_strategy) => {
                         <input type="number" name="buffer_current_size" value={params.buffer_current_size} onChange={handleChange} style={inputStyle} />
                       </div>
                       
+                      <div>
+                        <label style={labelStyle}>Buffer Interest rate (Decimal)</label>
+                        <input type="number" name="buffer_interest_rate" value={params.buffer_interest_rate} onChange={handleChange} step="0.01" style={inputStyle} />
+                      </div>
+
                       {/* INSTRUCTIONAL BLOCK */}
                       <div style={{ fontSize: '13px', color: '#92400e', backgroundColor: '#fef3c7', padding: '10px 12px', borderRadius: '6px', marginBottom: '8px', borderLeft: '4px solid #fbbf24', lineHeight: '1.5' }}>
                         <p style={{ margin: 0 }}><strong>Strategy Stacking:</strong> You can run multiple protocols simultaneously. A sustainable system requires a balance of inflow (harvesting) and outflow (spending). It is highly recommended to select at least one Inflow rule and one Outflow rule.</p>

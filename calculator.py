@@ -43,6 +43,54 @@ class PortfolioSimulator:
             
         return 0.0
     
+    def calculate_interest_tax(self, gross_interest, regime, current_year_gains=0.0):
+        """
+        Calculates the tax owed on savings account interest.
+        Defaults to 'capital_gains' rules unless 'interest_income' is explicitly defined in the JSON.
+        """
+        if gross_interest <= 0:
+            return 0.0
+
+        # Look for a dedicated interest tax config first, fallback to capital gains
+        config = self.taxes.get("interest_income", {}).get(regime)
+        if not config:
+            config = self.taxes.get("capital_gains", {}).get(regime)
+            
+        if not config:
+            return 0.0 # Fallback to zero if regime is completely missing
+            
+        if config["type"] == "flat":
+            return gross_interest * config["rate"]
+            
+        elif config["type"] in ["tiered", "progressive_estimate"]:
+            tax = 0.0
+            remaining_interest = gross_interest
+            current_g = current_year_gains
+            
+            for bracket in config["brackets"]:
+                limit = bracket.get("limit")
+                rate = bracket["rate"]
+                
+                # Skip brackets we've already filled with earlier capital gains
+                if limit is not None and current_g >= limit:
+                    continue
+                    
+                capacity = float('inf') if limit is None else limit - current_g
+                
+                if remaining_interest <= capacity:
+                    # All remaining interest fits perfectly in this bracket slice
+                    tax += remaining_interest * rate
+                    break
+                else:
+                    # Fill this bracket slice and move to the next higher bracket
+                    tax += capacity * rate
+                    current_g += capacity
+                    remaining_interest -= capacity
+                    
+            return tax
+            
+        return 0.0
+
     def _calculate_gross_withdrawal(self, net_needed, profit_percentage, tax_config, current_year_gains):
         """
         Reverse-engineers the exact gross withdrawal required to yield a specific net amount, 
@@ -338,6 +386,12 @@ class PortfolioSimulator:
         monthly_inflation_rate = (1 + params['inflation_percentage']) ** (1/12) - 1
         
         current_buffer = params.get('buffer_current_size', 0.0) if params.get('use_cash_buffer', False) else 0.0
+        # SAVINGS ACCOUNT YIELD ---
+        buffer_interest_rate = params.get('buffer_interest_rate', 0.0)
+        # Using geometric compounding to match the inflation and linear rate logic
+        monthly_buffer_rate = (1 + buffer_interest_rate)**(1/12) - 1 
+        # ----------------------------------
+        
         monthly_deplete_threshold = (1 + params.get('buffer_depletion_threshold', 0.0))**(1/12) - 1
         monthly_replenish_threshold = (1 + params.get('buffer_replenishment_threshold', 0.10))**(1/12) - 1
         current_year_gains_withdrawn = 0
@@ -403,6 +457,35 @@ class PortfolioSimulator:
             portfolio_value *= (1 + growth_rate)
             synthetic_index *= (1 + growth_rate)
     
+            # --- NEW: TAX-AWARE BUFFER YIELD ---
+            if current_buffer > 0 and monthly_buffer_rate > 0:
+                gross_interest_this_month = current_buffer * monthly_buffer_rate
+                
+                # Figure out where the user lives right now
+                active_tax_res = tax_res
+                for reloc in params.get('relocations', []):
+                    reloc_abs_month = (reloc['year'] * 12) + reloc['month'] - 1
+                    if current_absolute_month >= reloc_abs_month:
+                        active_tax_res = reloc['new_regime']
+                
+                # Calculate the tax owed on this specific interest payment
+                tax_on_interest = self.calculate_interest_tax(
+                    gross_interest_this_month, 
+                    active_tax_res, 
+                    current_year_gains_withdrawn
+                )
+                
+                # Add only the net yield to the buffer
+                net_interest = gross_interest_this_month - tax_on_interest
+                current_buffer += net_interest
+                
+                # IMPORTANT: If the interest is being taxed under capital gains, 
+                # we must add it to the year's total so subsequent withdrawals hit the right bracket.
+                config_used = self.taxes.get("interest_income", {}).get(active_tax_res)
+                if not config_used:
+                    current_year_gains_withdrawn += gross_interest_this_month
+            # -----------------------------------
+
             use_trend_guardrail = params.get('use_trend_guardrail', False)
             use_dynamic_buffer = params.get('use_dynamic_buffer', False)
             use_equity_glidepath = params.get('use_equity_glidepath', False)

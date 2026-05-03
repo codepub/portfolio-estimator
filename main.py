@@ -108,6 +108,7 @@ class SimulationParams(BaseModel):
     use_cash_buffer: bool = False
     buffer_target_months: int = 36
     buffer_current_size: float = 120000.0
+    buffer_interest_rate: float = 0.02
     buffer_refill_throttle_months: int = 3
     buffer_depletion_threshold: float = 0.0
     buffer_replenishment_threshold: float = 0.1  # yearly increase, in code divided to monthly
