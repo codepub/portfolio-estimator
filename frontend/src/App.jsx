@@ -894,8 +894,8 @@ const applyOptimizedStrategy = (optimal_strategy) => {
                       <input type="number" name="stochastic_volatility" value={params.stochastic_volatility} onChange={handleChange} step="0.001" style={inputStyle} />
                     </div>
                     <div style={inputGroupStyle}>
-                      <label style={labelStyle}>No Downturn Before This Year (Relative To Start)</label>
-                      <input type="number" name="first_possible_downturn_year" value={params.first_possible_downturn_year} onChange={handleChange} style={inputStyle} />
+                      <label style={labelStyle}>No Downturn Before This Month (Relative To Start)</label>
+                      <input type="number" name="first_possible_downturn_month" value={params.first_possible_downturn_month} onChange={handleChange} style={inputStyle} />
                     </div>
                     <div>
                       <label style={labelStyle}>Monte Carlo Iterations: {params.stochastic_iterations}</label>

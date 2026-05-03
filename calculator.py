@@ -277,13 +277,14 @@ class PortfolioSimulator:
     def generate_filtered_stochastic_timeline(self, params, total_months):
         """
         Generates a stochastic return sequence, applying rejection sampling 
-        to ensure the first N years do not yield a negative compound return.
+        to ensure the specified initial months do not yield a negative compound return.
         """
         engine_choice = params.get('stochastic_engine', 'gbm')
         annual_rate = params.get('linear_rate', 0.07)
         annual_vol = params.get('stochastic_volatility', 0.13)
-        first_possible_downturn_year = params.get('first_possible_downturn_year', 0)
         
+        # Pull the new monthly parameter
+        first_possible_downturn_month = params.get('first_possible_downturn_month', 0)
         max_attempts = 50
         attempts = 0
         stoch_rates = []
@@ -296,33 +297,38 @@ class PortfolioSimulator:
             else:
                 stoch_rates = self._generate_gbm_returns(annual_rate, annual_vol, total_months)
 
-            if first_possible_downturn_year > 0:
+            if first_possible_downturn_month > 0:
                 early_downturn_detected = False
                 
-                for y in range(first_possible_downturn_year):
-                    start_m = y * 12
-                    end_m = (y + 1) * 12
+                # Dynamically build evaluation intervals (12-month blocks + remainder)
+                chunks = first_possible_downturn_month // 12
+                remainder = first_possible_downturn_month % 12
+                
+                intervals = [(i * 12, (i + 1) * 12) for i in range(chunks)]
+                if remainder > 0:
+                    intervals.append((chunks * 12, first_possible_downturn_month))
                     
+                for start_m, end_m in intervals:
+                    # Failsafe if the restricted period exceeds the simulation length
                     if end_m > len(stoch_rates):
-                        break
+                        end_m = len(stoch_rates)
                         
-                    year_multiplier = 1.0
+                    chunk_multiplier = 1.0
                     for m in range(start_m, end_m):
-                        year_multiplier *= (1 + stoch_rates[m])
+                        chunk_multiplier *= (1 + stoch_rates[m])
                         
-                    if year_multiplier < 1.0:
+                    if chunk_multiplier < 1.0:
                         early_downturn_detected = True
                         break
                         
                 if early_downturn_detected:
-                    continue # Reject and redraw
+                    continue # Reject and redraw this sequence
 
             return stoch_rates # Valid timeline found
 
-        # Circuit breaker fallback: return the last generated sequence 
-        # to prevent the system from hanging on impossible constraints.
+        # Circuit breaker fallback
         return stoch_rates
-
+    
     def _run_single_timeline(self, params, rates, tax_res, start_year, start_month, total_months):
         results = {}
         portfolio_value = params['initial_investment']

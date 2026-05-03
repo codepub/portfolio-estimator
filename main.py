@@ -96,7 +96,7 @@ class SimulationParams(BaseModel):
     stochastic_engine: str = "gbm"
     stochastic_volatility: float = 0.13
     stochastic_iterations: int = 100
-    first_possible_downturn_year: int = 0
+    first_possible_downturn_month: int = 0
     simulation_start_year: int = datetime.now().year
     simulation_start_month: int = (datetime.now().month % 12) + 1
     simulation_end_year: int = datetime.now().year + 50
@@ -364,7 +364,7 @@ def find_minimum_capital(params: dict = Body(...)):
             simulator.generate_filtered_stochastic_timeline(params, total_months) 
             for _ in range(iterations)
         ]
-        
+
     results = []
     
     search_models = []
